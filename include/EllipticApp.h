@@ -54,6 +54,19 @@ public:
     // Set solver for GUI app (to avoid exposing FemSolver in header)
     void setSolverForGUI(class FemSolver* solver);
 
+    // GUI interface methods
+    void solveWithParameters(
+        double Lx, double Ly, int Nx, int Ny,
+        const std::string& a11, const std::string& a12, const std::string& a22,
+        const std::string& b1, const std::string& b2, const std::string& c, const std::string& f,
+        const std::string& westBC, const std::string& eastBC, const std::string& southBC, const std::string& northBC,
+        double westVal, double eastVal, double southVal, double northVal
+    );
+
+    // Get solution data for visualization
+    const std::vector<double>& getSolution() const { return currentSolution_; }
+    const Mesh& getMesh() const { return *currentMesh_; }
+
 private:
     // Private members for the application
     std::unique_ptr<MeshGenerator> meshGenerator_;
@@ -85,19 +98,6 @@ private:
 
     // Console mode function
     void runConsoleMode();
-
-    // GUI interface methods
-    void solveWithParameters(
-        double Lx, double Ly, int Nx, int Ny,
-        const std::string& a11, const std::string& a12, const std::string& a22,
-        const std::string& b1, const std::string& b2, const std::string& c, const std::string& f,
-        const std::string& westBC, const std::string& eastBC, const std::string& southBC, const std::string& northBC,
-        double westVal, double eastVal, double southVal, double northVal
-    );
-
-    // Get solution data for visualization
-    const std::vector<double>& getSolution() const { return currentSolution_; }
-    const Mesh& getMesh() const { return *currentMesh_; }
 };
 
 #endif // ELLIPTICAPP_H

@@ -27,6 +27,9 @@ public:
     // Entry point for the application
     int run();
 
+    // Public interface for GUI
+    class EllipticApp* getApp() { return app.get(); }
+
 private:
     std::unique_ptr<EllipticApp> app;
 };
