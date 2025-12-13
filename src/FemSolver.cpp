@@ -1,5 +1,6 @@
 #include "FemSolver.h"
 #include "EllipticApp.h"
+#include "GUIApp.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -25,6 +26,8 @@ int FemSolver::run() {
 
         // Run the main application with GUI
         if (app) {
+            // Set the solver in the GUI before running it
+            app->setSolverForGUI(this);
             app->run(true);  // Use GUI by default
             return 0;
         } else {

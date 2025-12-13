@@ -27,9 +27,10 @@ EllipticApp::~EllipticApp() = default;
 void EllipticApp::run(bool useGUI) {
     if (useGUI) {
         try {
-            // Initialize and run the GUI
+            // Initialize and run the GUI with reference to this solver
+            // The FemSolver will call this with the correct solver reference
             guiApp_->initialize();
-            guiApp_->run();
+            guiApp_->run();  // Just run the GUI, the solver will be set from FemSolver
         } catch (const std::exception& e) {
             std::cerr << "Error running GUI: " << e.what() << std::endl;
             std::cout << "Falling back to console mode..." << std::endl;
@@ -389,7 +390,7 @@ void EllipticApp::solveWithParameters(
         Ly_ = Ly;
         Nx_ = Nx;
         Ny_ = Ny;
-        
+
         // Parse coefficient functions
         a11_func_ = FunctionParser::parseFunction(a11);
         a12_func_ = FunctionParser::parseFunction(a12);
@@ -398,49 +399,55 @@ void EllipticApp::solveWithParameters(
         b2_func_ = FunctionParser::parseFunction(b2);
         c_func_ = FunctionParser::parseFunction(c);
         f_func_ = FunctionParser::parseFunction(f);
-        
+
         // Setup boundary conditions
         boundaryConditions_.clear();
-        
+
         // West boundary
         BoundaryConditionData westBCData;
         westBCData.type = westBC;
         westBCData.value = westVal;
         westBCData.value_func = [westVal](double, double) -> double { return westVal; }; // Simple constant
         boundaryConditions_["west"] = westBCData;
-        
+
         // East boundary
         BoundaryConditionData eastBCData;
         eastBCData.type = eastBC;
         eastBCData.value = eastVal;
         eastBCData.value_func = [eastVal](double, double) -> double { return eastVal; };
         boundaryConditions_["east"] = eastBCData;
-        
+
         // South boundary
         BoundaryConditionData southBCData;
         southBCData.type = southBC;
         southBCData.value = southVal;
         southBCData.value_func = [southVal](double, double) -> double { return southVal; };
         boundaryConditions_["south"] = southBCData;
-        
+
         // North boundary
         BoundaryConditionData northBCData;
         northBCData.type = northBC;
         northBCData.value = northVal;
         northBCData.value_func = [northVal](double, double) -> double { return northVal; };
         boundaryConditions_["north"] = northBCData;
-        
+
         // Generate mesh with new parameters
         meshGenerator_ = std::make_unique<MeshGenerator>(Lx_, Ly_, Nx_, Ny_);
         generateMesh();
-        
+
         // Solve the problem
         solveProblem();
-        
+
         std::cout << "Problem solved successfully with GUI parameters." << std::endl;
-        
+
     } catch (const std::exception& e) {
         std::cerr << "Error solving with parameters: " << e.what() << std::endl;
         throw;
+    }
+}
+
+void EllipticApp::setSolverForGUI(class FemSolver* solver) {
+    if (guiApp_) {
+        guiApp_->setSolver(solver);
     }
 }

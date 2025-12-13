@@ -48,6 +48,12 @@ public:
         boundaryConditions_ = bc;
     }
 
+    // Get GUI app for setting solver
+    GUIApp* getGUIApp() { return guiApp_.get(); }
+
+    // Set solver for GUI app (to avoid exposing FemSolver in header)
+    void setSolverForGUI(class FemSolver* solver);
+
 private:
     // Private members for the application
     std::unique_ptr<MeshGenerator> meshGenerator_;

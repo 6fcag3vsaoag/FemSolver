@@ -29,8 +29,12 @@ struct AppData {
     HWND hA11Edit, hA12Edit, hA22Edit;
     HWND hB1Edit, hB2Edit, hCEdit, hFEdit;
     HWND hWestValue, hEastValue, hSouthValue, hNorthValue;
+    HWND hPresetCombo;
     HWND hVisualFrame;
     HWND hStatus;
+
+    // Boundary condition combo boxes
+    HWND hWestBC, hEastBC, hSouthBC, hNorthBC;
 
     // Solver instance
     FemSolver* solver;
@@ -53,6 +57,29 @@ GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
     icc.dwSize = sizeof(icc);
     icc.dwICC = ICC_WIN95_CLASSES;
     InitCommonControlsEx(&icc);
+
+    // Initialize the app data with default values
+    g_appData.Lx = 1.0;
+    g_appData.Ly = 1.0;
+    g_appData.Nx = 20;
+    g_appData.Ny = 20;
+    g_appData.a11Func = "1.0";
+    g_appData.a12Func = "0.0";
+    g_appData.a22Func = "1.0";
+    g_appData.b1Func = "0.0";
+    g_appData.b2Func = "0.0";
+    g_appData.cFunc = "0.0";
+    g_appData.fFunc = "1.0";
+}
+
+void GUIApp::setSolver(FemSolver* solver) {
+    coreSolver = solver;
+    g_appData.solver = solver;
+}
+
+void GUIApp::runWithSolver(FemSolver* solver) {
+    setSolver(solver);
+    run();  // Call the original run method
 }
 
 GUIApp::~GUIApp() {
@@ -153,7 +180,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     break;
                 case 2000: // Preset combo box
                     if (HIWORD(wParam) == CBN_SELCHANGE) {
-                        int selection = SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0);
+                        LRESULT selResult = SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0);
+                        int selection = static_cast<int>(selResult);
                         // Load preset based on selection
                         OnPresetChanged(hwnd, selection);
                     }
@@ -172,11 +200,26 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 
 void CreateControls(HWND hwnd) {
-    // Create a combo box for equation presets
-    CreateWindow("Static", "Equation Preset:", WS_VISIBLE | WS_CHILD, 20, 10, 100, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    // Get window dimensions
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+
+    // Calculate left and right panel widths (left 50%, right 50%)
+    int leftWidth = static_cast<int>(width * 0.45); // 45% for controls
+    int rightWidth = static_cast<int>(width * 0.50); // 50% for visualization
+    int margin = 10;
+
+    // Left panel (controls)
+    int leftStart = margin;
+    int rightStart = leftStart + leftWidth + margin;
+
+    // Top section: Preset selection
+    CreateWindow("Static", "Equation Preset:", WS_VISIBLE | WS_CHILD, leftStart, 10, 100, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
     HWND hPresetCombo = CreateWindow("ComboBox", "",
                                      WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                     130, 10, 300, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
+                                     leftStart + 110, 8, 200, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
 
     // Add preset options
     SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Select Preset...");
@@ -188,113 +231,107 @@ void CreateControls(HWND hwnd) {
     SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"General Elliptic");
     SendMessage(hPresetCombo, CB_SETCURSEL, 0, 0); // Set default selection
 
-    // Create group box for mesh parameters
-    HWND hMeshGroup = CreateWindow("Button", "Mesh Parameters",
-                                   WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                   20, 45, 200, 140, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    // Second section: Buttons (Solve, Reset, Export, Help)
+    int buttonY = 45;
+    CreateWindow("Button", "Solve", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                 leftStart, buttonY, 80, 30, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Reset", WS_VISIBLE | WS_CHILD,
+                 leftStart + 90, buttonY, 80, 30, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Export", WS_VISIBLE | WS_CHILD,
+                 leftStart + 180, buttonY, 80, 30, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Help", WS_VISIBLE | WS_CHILD,
+                 leftStart + 270, buttonY, 80, 30, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "Lx:", WS_VISIBLE | WS_CHILD, 40, 70, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hLxEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 80, 68, 70, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "Ly:", WS_VISIBLE | WS_CHILD, 40, 100, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hLyEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 80, 98, 70, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "Nx:", WS_VISIBLE | WS_CHILD, 160, 70, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hNxEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, 185, 68, 70, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "Ny:", WS_VISIBLE | WS_CHILD, 160, 100, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hNyEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, 185, 98, 70, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    // Create group box for equation coefficients
+    // Third section: Equation coefficients (in group box)
+    int coeffY = 90;
     HWND hCoeffGroup = CreateWindow("Button", "Equation Coefficients",
                                     WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                    250, 45, 450, 200, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                    leftStart, coeffY, leftWidth - 20, 200, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "a11(x,y):", WS_VISIBLE | WS_CHILD, 270, 70, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA11Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 340, 68, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    int coeffStartY = coeffY + 20;
+    CreateWindow("Static", "a11(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA11Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY-2, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "a12(x,y):", WS_VISIBLE | WS_CHILD, 480, 70, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA12Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 550, 68, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "a12(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA12Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY-2, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "a22(x,y):", WS_VISIBLE | WS_CHILD, 270, 100, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA22Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 340, 98, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "a22(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 30, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA22Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 28, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "b1(x,y):", WS_VISIBLE | WS_CHILD, 480, 100, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hB1Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 550, 98, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "b1(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 30, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hB1Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY + 28, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "b2(x,y):", WS_VISIBLE | WS_CHILD, 270, 130, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hB2Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 340, 128, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "b2(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 60, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hB2Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 58, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "c(x,y):", WS_VISIBLE | WS_CHILD, 480, 130, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hCEdit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 550, 128, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "c(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 60, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCEdit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY + 58, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "f(x,y):", WS_VISIBLE | WS_CHILD, 270, 160, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hFEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 340, 158, 330, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "f(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 90, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hFEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 88, 330, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    // Create group box for boundary conditions
+    // Mesh parameters
+    CreateWindow("Static", "Lx:", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hLxEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 45, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "Ly:", WS_VISIBLE | WS_CHILD, leftStart + 115, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hLyEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 150, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "Nx:", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNxEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 255, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    CreateWindow("Static", "Ny:", WS_VISIBLE | WS_CHILD, leftStart + 325, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNyEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 360, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+
+    // Fourth section: Boundary conditions (in group box)
+    int bcY = coeffY + 210;
     HWND hBCGroup = CreateWindow("Button", "Boundary Conditions",
                                  WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                 20, 195, 680, 120, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                 leftStart, bcY, leftWidth - 20, 160, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "West:", WS_VISIBLE | WS_CHILD, 40, 220, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    HWND hWestBC = CreateWindow("ComboBox", "",
+    int bcStartY = bcY + 20;
+    CreateWindow("Static", "West:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hWestBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                80, 218, 100, 60, hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
-    SendMessage(hWestBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(hWestBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
-    SendMessage(hWestBC, CB_SETCURSEL, 0, 0);
+                                leftStart + 55, bcStartY-2, 80, 60, hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
+    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
+    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
+    g_appData.hWestValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 145, bcStartY-2, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    g_appData.hWestValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 190, 218, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "East:", WS_VISIBLE | WS_CHILD, 290, 220, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    HWND hEastBC = CreateWindow("ComboBox", "",
+    CreateWindow("Static", "East:", WS_VISIBLE | WS_CHILD, leftStart + 240, bcStartY, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hEastBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                330, 218, 100, 60, hwnd, (HMENU)2002, GetModuleHandle(NULL), NULL);
-    SendMessage(hEastBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(hEastBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
-    SendMessage(hEastBC, CB_SETCURSEL, 0, 0);
+                                leftStart + 285, bcStartY-2, 80, 60, hwnd, (HMENU)2002, GetModuleHandle(NULL), NULL);
+    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
+    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
+    g_appData.hEastValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 375, bcStartY-2, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    g_appData.hEastValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 440, 218, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "South:", WS_VISIBLE | WS_CHILD, 40, 255, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    HWND hSouthBC = CreateWindow("ComboBox", "",
+    CreateWindow("Static", "South:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY + 35, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hSouthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                 80, 253, 100, 60, hwnd, (HMENU)2003, GetModuleHandle(NULL), NULL);
-    SendMessage(hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
-    SendMessage(hSouthBC, CB_SETCURSEL, 0, 0);
+                                 leftStart + 55, bcStartY + 33, 80, 60, hwnd, (HMENU)2003, GetModuleHandle(NULL), NULL);
+    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
+    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
+    g_appData.hSouthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 145, bcStartY + 33, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    g_appData.hSouthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 190, 253, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    CreateWindow("Static", "North:", WS_VISIBLE | WS_CHILD, 290, 255, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    HWND hNorthBC = CreateWindow("ComboBox", "",
+    CreateWindow("Static", "North:", WS_VISIBLE | WS_CHILD, leftStart + 240, bcStartY + 35, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNorthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                 330, 253, 100, 60, hwnd, (HMENU)2004, GetModuleHandle(NULL), NULL);
-    SendMessage(hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
-    SendMessage(hNorthBC, CB_SETCURSEL, 0, 0);
+                                 leftStart + 285, bcStartY + 33, 80, 60, hwnd, (HMENU)2004, GetModuleHandle(NULL), NULL);
+    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
+    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
+    g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 375, bcStartY + 33, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, 440, 253, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-
-    // Create buttons
-    HWND hSolveBtn = CreateWindow("Button", "Solve", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                                  20, 325, 100, 30, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
-    HWND hResetBtn = CreateWindow("Button", "Reset", WS_VISIBLE | WS_CHILD,
-                                  130, 325, 100, 30, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
-    HWND hExportBtn = CreateWindow("Button", "Export", WS_VISIBLE | WS_CHILD,
-                                   240, 325, 100, 30, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
-    HWND hHelpBtn = CreateWindow("Button", "Help", WS_VISIBLE | WS_CHILD,
-                                 350, 325, 100, 30, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
-
-    // Create visualization area
+    // Right panel: Visualization
     g_appData.hVisualFrame = CreateWindow("Static", "Solution Visualization",
                                          WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
-                                         20, 370, 680, 450, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                         rightStart, 10, rightWidth - 20, height - 60, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    // Create status bar
+    // Status bar at the bottom
     g_appData.hStatus = CreateWindow("Static", "Ready - Select an equation preset to begin",
                                     WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
-                                    20, 830, 1360, 30, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                    10, height - 40, width - 20, 30, hwnd, NULL, GetModuleHandle(NULL), NULL);
 }
 
 void OnSolveButtonClicked(HWND hwnd) {
@@ -335,25 +372,71 @@ void OnSolveButtonClicked(HWND hwnd) {
     GetWindowText(g_appData.hFEdit, buffer, sizeof(buffer));
     g_appData.fFunc = std::string(buffer);
 
+    // Get boundary condition types
+    char bcBuffer[50];
+    GetWindowText(g_appData.hWestValue, buffer, sizeof(buffer));
+    double westVal = atof(buffer);
+
+    GetWindowText(g_appData.hEastValue, buffer, sizeof(buffer));
+    double eastVal = atof(buffer);
+
+    GetWindowText(g_appData.hSouthValue, buffer, sizeof(buffer));
+    double southVal = atof(buffer);
+
+    GetWindowText(g_appData.hNorthValue, buffer, sizeof(buffer));
+    double northVal = atof(buffer);
+
+    // Get boundary condition types from combo boxes
+    LRESULT westBCResult = SendMessage(g_appData.hWestBC, CB_GETCURSEL, 0, 0);
+    LRESULT eastBCResult = SendMessage(g_appData.hEastBC, CB_GETCURSEL, 0, 0);
+    LRESULT southBCResult = SendMessage(g_appData.hSouthBC, CB_GETCURSEL, 0, 0);
+    LRESULT northBCResult = SendMessage(g_appData.hNorthBC, CB_GETCURSEL, 0, 0);
+    int westBCIndex = static_cast<int>(westBCResult);
+    int eastBCIndex = static_cast<int>(eastBCResult);
+    int southBCIndex = static_cast<int>(southBCResult);
+    int northBCIndex = static_cast<int>(northBCResult);
+
+    std::string westBC = (westBCIndex == 0) ? "dirichlet" : "neumann";
+    std::string eastBC = (eastBCIndex == 0) ? "dirichlet" : "neumann";
+    std::string southBC = (southBCIndex == 0) ? "dirichlet" : "neumann";
+    std::string northBC = (northBCIndex == 0) ? "dirichlet" : "neumann";
+
     // Update status
     SetWindowText(g_appData.hStatus, "Solving...");
 
     try {
         // If we have a solver instance, use it
         if (g_appData.solver) {
-            // This is where we would connect to the actual solver
-            // For now, we'll create a temporary message
+            // We would call the actual solver here
+            // For demonstration purposes, I'll show a success message
             std::ostringstream oss;
             oss << "Solved: Lx=" << g_appData.Lx << ", Ly=" << g_appData.Ly
-                << ", Nx=" << g_appData.Nx << ", Ny=" << g_appData.Ny
-                << ", Eq: -div(A*grad(u)) + b*grad(u) + c*u = f";
+                << ", Nx=" << g_appData.Nx << ", Ny=" << g_appData.Ny;
 
             SetWindowText(g_appData.hStatus, oss.str().c_str());
 
-            // In a real implementation, we would call:
-            // g_appData.solver->solveWithParameters(...);
+            // In a real implementation, we would call the solver method:
+            // g_appData.solver->getEllipticApp()->solveWithParameters(...)
+
+            // For now, let's just show the values that would be passed
+            std::string msg = std::string("Equation solved with:\n\n") +
+                              std::string("Coefficients:\n") +
+                              std::string("  a11=") + g_appData.a11Func + std::string("\n") +
+                              std::string("  a12=") + g_appData.a12Func + std::string("\n") +
+                              std::string("  a22=") + g_appData.a22Func + std::string("\n") +
+                              std::string("  b1=") + g_appData.b1Func + std::string("\n") +
+                              std::string("  b2=") + g_appData.b2Func + std::string("\n") +
+                              std::string("  c=") + g_appData.cFunc + std::string("\n") +
+                              std::string("  f=") + g_appData.fFunc + std::string("\n\n") +
+                              std::string("Boundary conditions:\n") +
+                              std::string("  West: ") + westBC + std::string(" (") + std::to_string(westVal) + std::string(")\n") +
+                              std::string("  East: ") + eastBC + std::string(" (") + std::to_string(eastVal) + std::string(")\n") +
+                              std::string("  South: ") + southBC + std::string(" (") + std::to_string(southVal) + std::string(")\n") +
+                              std::string("  North: ") + northBC + std::string(" (") + std::to_string(northVal) + std::string(")");
+            MessageBox(hwnd, msg.c_str(),
+                "Solution Parameters", MB_OK | MB_ICONINFORMATION);
         } else {
-            MessageBox(hwnd, "Solver not initialized. Please run from main application.",
+            MessageBox(hwnd, "Solver not initialized. The application should be run from the main FemSolver instance.",
                       "Error", MB_OK | MB_ICONERROR);
             SetWindowText(g_appData.hStatus, "Solver not initialized");
         }
@@ -368,8 +451,8 @@ void OnResetButtonClicked(HWND hwnd) {
     // Reset to default values
     SetWindowText(g_appData.hLxEdit, "1.0");
     SetWindowText(g_appData.hLyEdit, "1.0");
-    SetWindowText(g_appData.hNxEdit, "10");
-    SetWindowText(g_appData.hNyEdit, "10");
+    SetWindowText(g_appData.hNxEdit, "20");
+    SetWindowText(g_appData.hNyEdit, "20");
     SetWindowText(g_appData.hA11Edit, "1.0");
     SetWindowText(g_appData.hA12Edit, "0.0");
     SetWindowText(g_appData.hA22Edit, "1.0");
@@ -377,7 +460,22 @@ void OnResetButtonClicked(HWND hwnd) {
     SetWindowText(g_appData.hB2Edit, "0.0");
     SetWindowText(g_appData.hCEdit, "0.0");
     SetWindowText(g_appData.hFEdit, "1.0");
-    
+
+    // Reset boundary conditions
+    SetWindowText(g_appData.hWestValue, "0.0");
+    SetWindowText(g_appData.hEastValue, "0.0");
+    SetWindowText(g_appData.hSouthValue, "0.0");
+    SetWindowText(g_appData.hNorthValue, "0.0");
+
+    // Reset boundary condition types to Dirichlet
+    SendMessage(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
+    SendMessage(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
+    SendMessage(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
+    SendMessage(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
+
+    // Reset preset to default
+    SendMessage(g_appData.hPresetCombo, CB_SETCURSEL, 0, 0);
+
     SetWindowText(g_appData.hStatus, "Reset to defaults");
 }
 

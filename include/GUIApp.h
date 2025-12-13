@@ -5,6 +5,9 @@
 #include <string>
 #include <memory>
 
+// Forward declaration of FemSolver (to avoid circular includes)
+class FemSolver;
+
 // Forward declaration of GUI framework classes
 // For now, we'll use a placeholder approach
 class GUIApp {
@@ -36,12 +39,16 @@ private:
     class FemSolver* coreSolver;
 
     // Methods to update GUI from solver
-    void setSolver(FemSolver* solver) { coreSolver = solver; }
+    friend class EllipticApp;  // Allow EllipticApp to access these private methods
+    void setSolver(FemSolver* solver);
     void updateGUIGridParams(double Lx, double Ly, int Nx, int Ny);
     void updateGUICoefficients(
         const std::string& a11, const std::string& a12, const std::string& a22,
         const std::string& b1, const std::string& b2, const std::string& c, const std::string& f);
     void updateGUIVisualization();
+
+    // Run the GUI application
+    void runWithSolver(FemSolver* solver);
 };
 
 #endif // GUIAPP_H
