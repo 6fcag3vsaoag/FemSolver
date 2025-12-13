@@ -34,6 +34,14 @@ private:
 
     // For now, we'll store a reference to the core solver
     class FemSolver* coreSolver;
+
+    // Methods to update GUI from solver
+    void setSolver(FemSolver* solver) { coreSolver = solver; }
+    void updateGUIGridParams(double Lx, double Ly, int Nx, int Ny);
+    void updateGUICoefficients(
+        const std::string& a11, const std::string& a12, const std::string& a22,
+        const std::string& b1, const std::string& b2, const std::string& c, const std::string& f);
+    void updateGUIVisualization();
 };
 
 #endif // GUIAPP_H

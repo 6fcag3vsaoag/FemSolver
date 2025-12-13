@@ -375,3 +375,72 @@ void EllipticApp::setupReactionDiffusionProblem() {
 
     meshGenerator_ = std::make_unique<MeshGenerator>(Lx_, Ly_, Nx_, Ny_);
 }
+
+void EllipticApp::solveWithParameters(
+    double Lx, double Ly, int Nx, int Ny,
+    const std::string& a11, const std::string& a12, const std::string& a22,
+    const std::string& b1, const std::string& b2, const std::string& c, const std::string& f,
+    const std::string& westBC, const std::string& eastBC, const std::string& southBC, const std::string& northBC,
+    double westVal, double eastVal, double southVal, double northVal
+) {
+    try {
+        // Set the problem parameters
+        Lx_ = Lx;
+        Ly_ = Ly;
+        Nx_ = Nx;
+        Ny_ = Ny;
+        
+        // Parse coefficient functions
+        a11_func_ = FunctionParser::parseFunction(a11);
+        a12_func_ = FunctionParser::parseFunction(a12);
+        a22_func_ = FunctionParser::parseFunction(a22);
+        b1_func_ = FunctionParser::parseFunction(b1);
+        b2_func_ = FunctionParser::parseFunction(b2);
+        c_func_ = FunctionParser::parseFunction(c);
+        f_func_ = FunctionParser::parseFunction(f);
+        
+        // Setup boundary conditions
+        boundaryConditions_.clear();
+        
+        // West boundary
+        BoundaryConditionData westBCData;
+        westBCData.type = westBC;
+        westBCData.value = westVal;
+        westBCData.value_func = [westVal](double, double) -> double { return westVal; }; // Simple constant
+        boundaryConditions_["west"] = westBCData;
+        
+        // East boundary
+        BoundaryConditionData eastBCData;
+        eastBCData.type = eastBC;
+        eastBCData.value = eastVal;
+        eastBCData.value_func = [eastVal](double, double) -> double { return eastVal; };
+        boundaryConditions_["east"] = eastBCData;
+        
+        // South boundary
+        BoundaryConditionData southBCData;
+        southBCData.type = southBC;
+        southBCData.value = southVal;
+        southBCData.value_func = [southVal](double, double) -> double { return southVal; };
+        boundaryConditions_["south"] = southBCData;
+        
+        // North boundary
+        BoundaryConditionData northBCData;
+        northBCData.type = northBC;
+        northBCData.value = northVal;
+        northBCData.value_func = [northVal](double, double) -> double { return northVal; };
+        boundaryConditions_["north"] = northBCData;
+        
+        // Generate mesh with new parameters
+        meshGenerator_ = std::make_unique<MeshGenerator>(Lx_, Ly_, Nx_, Ny_);
+        generateMesh();
+        
+        // Solve the problem
+        solveProblem();
+        
+        std::cout << "Problem solved successfully with GUI parameters." << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Error solving with parameters: " << e.what() << std::endl;
+        throw;
+    }
+}
