@@ -40,6 +40,17 @@ struct AppData {
     HWND hStatus;
     HWND hSolutionInfo;  // Solution information display
 
+    // Static text labels
+    HWND hPresetLabel;   // "Equation Preset:" label
+    HWND hCoeffLabels[7]; // Coefficient labels: a11, a12, a22, b1, b2, c, f
+    HWND hMeshLabels[4];  // Mesh labels: Lx, Ly, Nx, Ny
+    HWND hBCLabels[4];    // Boundary condition labels: West, East, South, North
+
+    // Group box controls
+    HWND hCoeffGroup;    // Coefficient group box
+    HWND hBCGroup;       // Boundary condition group box
+    HWND hSolInfoGroup;  // Solution info group box
+
     // Boundary condition combo boxes
     HWND hWestBC, hEastBC, hSouthBC, hNorthBC;
 
@@ -126,7 +137,7 @@ void GUIApp::run() {
         g_szClassName,
         "Finite Element Method Solver - Elliptic Equations",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1400, 1000,  // Increased size for better layout with solution info panel
+        CW_USEDEFAULT, CW_USEDEFAULT, 1100, 750,  // More reasonable initial size with proper aspect ratio
         NULL, NULL, GetModuleHandle(NULL), NULL
     );
 
@@ -203,6 +214,171 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case WM_DESTROY:
             PostQuitMessage(0);
+            break;
+
+        case WM_GETMINMAXINFO:
+            {
+                LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
+                lpMMI->ptMinTrackSize.x = 1000;  // Minimum width for proper layout
+                lpMMI->ptMinTrackSize.y = 800;   // Increased minimum height for proper layout with extended solution panel
+            }
+            break;
+
+        case WM_SIZE:
+            {
+                // Handle window resize to make UI responsive
+                int newWidth = LOWORD(lParam);
+                int newHeight = HIWORD(lParam);
+
+                // Recalculate dimensions
+                int leftWidth = static_cast<int>(newWidth * 0.35); // 35% for controls
+                int rightWidth = static_cast<int>(newWidth * 0.60); // 60% for visualization
+                int margin = static_cast<int>(newWidth * 0.025); // Responsive margin
+                int leftStart = margin;
+                int rightStart = leftStart + leftWidth + margin;
+
+                // Resize and reposition controls
+                if (g_appData.hStatus) {
+                    MoveWindow(g_appData.hStatus, 10, newHeight - 40, newWidth - 20, 30, TRUE);
+                }
+
+                // Resize and reposition visualization frame (right panel)
+                if (g_appData.hVisualFrame) {
+                    // Calculate visualization height, leaving space for status bar and some margin at the bottom
+                    int visHeight = newHeight - 60; // Leave 60px for status bar and margins
+                    MoveWindow(g_appData.hVisualFrame, rightStart, 10, rightWidth - 20, visHeight, TRUE);
+                }
+
+                // Resize the preset combo box
+                int presetLabelWidth = static_cast<int>(leftWidth * 0.28);
+                if (g_appData.hPresetCombo) {
+                    MoveWindow(g_appData.hPresetCombo, leftStart + presetLabelWidth, 8, leftWidth - presetLabelWidth - 10, 150, TRUE);
+                }
+
+                // Resize the preset label
+                if (g_appData.hPresetLabel) {
+                    MoveWindow(g_appData.hPresetLabel, leftStart, 10, presetLabelWidth, 25, TRUE);
+                }
+
+                // Resize the buttons
+                int buttonY = 45;
+                int buttonWidth = static_cast<int>(leftWidth * 0.18); // About 18% of the left panel width
+                int buttonSpacing = static_cast<int>(leftWidth * 0.02); // 2% of width spacing
+
+                HWND hSolveBtn = GetDlgItem(hwnd, 1001);
+                HWND hResetBtn = GetDlgItem(hwnd, 1002);
+                HWND hExportBtn = GetDlgItem(hwnd, 1003);
+                HWND hHelpBtn = GetDlgItem(hwnd, 1004);
+
+                if (hSolveBtn) MoveWindow(hSolveBtn, leftStart, buttonY, buttonWidth, 30, TRUE);
+                if (hResetBtn) MoveWindow(hResetBtn, leftStart + buttonWidth + buttonSpacing, buttonY, buttonWidth, 30, TRUE);
+                if (hExportBtn) MoveWindow(hExportBtn, leftStart + (buttonWidth + buttonSpacing) * 2, buttonY, buttonWidth, 30, TRUE);
+                if (hHelpBtn) MoveWindow(hHelpBtn, leftStart + (buttonWidth + buttonSpacing) * 3, buttonY, buttonWidth, 30, TRUE);
+
+                // Calculate positions for group boxes with proper spacing
+                int coeffY = 110;  // Fixed position to match CreateControls
+                int coeffSectionHeight = 200;  // Fixed height for coefficients
+                int bcY = coeffY + coeffSectionHeight + 10;  // Boundary conditions after coeff section with margin
+                int bcSectionHeight = 160;  // Fixed height for boundary conditions
+                int solInfoY = bcY + bcSectionHeight + 10;  // Solution info after boundary conditions
+                int solInfoHeight = newHeight - solInfoY - 50;  // Extend to above status bar (leaving space for status bar)
+
+                // Move and resize group boxes
+                if (g_appData.hCoeffGroup) {
+                    MoveWindow(g_appData.hCoeffGroup, leftStart, coeffY, leftWidth - 10, coeffSectionHeight, TRUE);
+                }
+                if (g_appData.hBCGroup) {
+                    MoveWindow(g_appData.hBCGroup, leftStart, bcY, leftWidth - 10, bcSectionHeight, TRUE);
+                }
+                if (g_appData.hSolInfoGroup) {
+                    MoveWindow(g_appData.hSolInfoGroup, leftStart, solInfoY, leftWidth - 10, solInfoHeight, TRUE);
+                }
+
+                // Move the solution info text control inside its group
+                if (g_appData.hSolutionInfo) {
+                    MoveWindow(g_appData.hSolutionInfo, leftStart + 10, solInfoY + 20, leftWidth - 25, solInfoHeight - 30, TRUE);
+                }
+
+                // Now resize and reposition all static labels and controls within the coefficient section
+                int coeffStartY = coeffY + 20;
+                int coeffLabelWidth = static_cast<int>(leftWidth * 0.15);  // Reduced width for labels (like "a11(x,y):")
+                int coeffFieldWidth = static_cast<int>(leftWidth * 0.28);  // Reduced width for text fields
+                int coeffSpacingX = coeffLabelWidth + 5;  // Reduced spacing between label and field
+
+                // Resize coefficient labels
+                if (g_appData.hCoeffLabels[0]) MoveWindow(g_appData.hCoeffLabels[0], leftStart + 10, coeffStartY, coeffLabelWidth, 20, TRUE); // a11
+                if (g_appData.hCoeffLabels[1]) MoveWindow(g_appData.hCoeffLabels[1], leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY, coeffLabelWidth, 20, TRUE); // a12
+                if (g_appData.hCoeffLabels[2]) MoveWindow(g_appData.hCoeffLabels[2], leftStart + 10, coeffStartY + 30, coeffLabelWidth, 20, TRUE); // a22
+                if (g_appData.hCoeffLabels[3]) MoveWindow(g_appData.hCoeffLabels[3], leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY + 30, coeffLabelWidth, 20, TRUE); // b1
+                if (g_appData.hCoeffLabels[4]) MoveWindow(g_appData.hCoeffLabels[4], leftStart + 10, coeffStartY + 60, coeffLabelWidth, 20, TRUE); // b2
+                if (g_appData.hCoeffLabels[5]) MoveWindow(g_appData.hCoeffLabels[5], leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY + 60, coeffLabelWidth, 20, TRUE); // c
+                if (g_appData.hCoeffLabels[6]) MoveWindow(g_appData.hCoeffLabels[6], leftStart + 10, coeffStartY + 90, coeffLabelWidth, 20, TRUE); // f
+
+                // Resize coefficient input fields
+                if (g_appData.hA11Edit) MoveWindow(g_appData.hA11Edit, leftStart + coeffSpacingX, coeffStartY - 2, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hA12Edit) MoveWindow(g_appData.hA12Edit, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY - 2, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hA22Edit) MoveWindow(g_appData.hA22Edit, leftStart + coeffSpacingX, coeffStartY + 28, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hB1Edit) MoveWindow(g_appData.hB1Edit, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY + 28, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hB2Edit) MoveWindow(g_appData.hB2Edit, leftStart + coeffSpacingX, coeffStartY + 58, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hCEdit) MoveWindow(g_appData.hCEdit, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY + 58, coeffFieldWidth, 22, TRUE);
+                if (g_appData.hFEdit) MoveWindow(g_appData.hFEdit, leftStart + coeffSpacingX, coeffStartY + 88, coeffFieldWidth * 2 + coeffLabelWidth, 22, TRUE);
+
+                // Resize mesh labels and parameters
+                int meshLabelWidth = static_cast<int>(leftWidth * 0.06);  // Reduced width for labels like "Lx:"
+                int meshFieldWidth = static_cast<int>(leftWidth * 0.10);  // Reduced width for text fields
+                int meshSpacing = static_cast<int>(leftWidth * 0.02);     // Reduced spacing between elements
+
+                if (g_appData.hMeshLabels[0]) MoveWindow(g_appData.hMeshLabels[0], leftStart + 10, coeffStartY + 125, meshLabelWidth, 20, TRUE);  // Lx
+                if (g_appData.hLxEdit) MoveWindow(g_appData.hLxEdit, leftStart + 10 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, TRUE);
+                if (g_appData.hMeshLabels[1]) MoveWindow(g_appData.hMeshLabels[1], leftStart + 10 + meshLabelWidth + meshFieldWidth + meshSpacing, coeffStartY + 125, meshLabelWidth, 20, TRUE);  // Ly
+                if (g_appData.hLyEdit) MoveWindow(g_appData.hLyEdit, leftStart + 10 + meshLabelWidth + meshFieldWidth + meshSpacing + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, TRUE);
+                if (g_appData.hMeshLabels[2]) MoveWindow(g_appData.hMeshLabels[2], leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 2, coeffStartY + 125, meshLabelWidth, 20, TRUE);  // Nx
+                if (g_appData.hNxEdit) MoveWindow(g_appData.hNxEdit, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 2 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, TRUE);
+                if (g_appData.hMeshLabels[3]) MoveWindow(g_appData.hMeshLabels[3], leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 3, coeffStartY + 125, meshLabelWidth, 20, TRUE);  // Ny
+                if (g_appData.hNyEdit) MoveWindow(g_appData.hNyEdit, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 3 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, TRUE);
+
+                // Resize boundary condition labels and controls
+                int bcStartY = bcY + 20;
+                int bcLabelWidth = static_cast<int>(leftWidth * 0.08);  // Reduced width for labels like "West:"
+                int bcComboWidth = static_cast<int>(leftWidth * 0.18);  // Reduced combo box width
+                int bcValueWidth = static_cast<int>(leftWidth * 0.18);  // Reduced value field width
+
+                // Calculate positions for east/south controls to avoid overflow
+                int eastStartX = leftStart + static_cast<int>(leftWidth * 0.5); // Position on the right half of the group box
+                int eastSpacing = 5; // Reduced spacing
+
+                // West boundary controls
+                if (g_appData.hBCLabels[0]) MoveWindow(g_appData.hBCLabels[0], leftStart + 10, bcStartY, bcLabelWidth, 20, TRUE); // West
+                if (g_appData.hWestBC) MoveWindow(g_appData.hWestBC, leftStart + 10 + bcLabelWidth, bcStartY-2, bcComboWidth, 60, TRUE);
+                // Ensure West value field fits within the left half
+                int westValueWidth = eastStartX - (leftStart + 10 + bcLabelWidth + bcComboWidth + 10) - 5;
+                if (westValueWidth > 0) {
+                    if (g_appData.hWestValue) MoveWindow(g_appData.hWestValue, leftStart + 10 + bcLabelWidth + bcComboWidth + 10, bcStartY-2, westValueWidth, 22, TRUE);
+                }
+
+                // East boundary controls
+                if (g_appData.hBCLabels[1]) MoveWindow(g_appData.hBCLabels[1], eastStartX, bcStartY, bcLabelWidth, 20, TRUE); // East
+                if (g_appData.hEastBC) MoveWindow(g_appData.hEastBC, eastStartX + bcLabelWidth, bcStartY-2, bcComboWidth, 60, TRUE);
+                // Calculate available space for East value field to prevent overflow
+                int eastValueWidth = leftWidth - 15 - (eastStartX + bcLabelWidth + bcComboWidth + 5);
+                if (eastValueWidth > 0) {
+                    if (g_appData.hEastValue) MoveWindow(g_appData.hEastValue, eastStartX + bcLabelWidth + bcComboWidth + 5, bcStartY-2, eastValueWidth, 22, TRUE);
+                }
+
+                // South boundary controls
+                if (g_appData.hBCLabels[2]) MoveWindow(g_appData.hBCLabels[2], leftStart + 10, bcStartY + 35, bcLabelWidth, 20, TRUE); // South
+                if (g_appData.hSouthBC) MoveWindow(g_appData.hSouthBC, leftStart + 10 + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, TRUE);
+                if (westValueWidth > 0) {
+                    if (g_appData.hSouthValue) MoveWindow(g_appData.hSouthValue, leftStart + 10 + bcLabelWidth + bcComboWidth + 10, bcStartY + 33, westValueWidth, 22, TRUE);
+                }
+
+                // North boundary controls
+                if (g_appData.hBCLabels[3]) MoveWindow(g_appData.hBCLabels[3], eastStartX, bcStartY + 35, bcLabelWidth, 20, TRUE); // North
+                if (g_appData.hNorthBC) MoveWindow(g_appData.hNorthBC, eastStartX + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, TRUE);
+                if (eastValueWidth > 0) {
+                    if (g_appData.hNorthValue) MoveWindow(g_appData.hNorthValue, eastStartX + bcLabelWidth + bcComboWidth + 5, bcStartY + 33, eastValueWidth, 22, TRUE);
+                }
+            }
             break;
 
         case WM_PAINT:
@@ -489,133 +665,161 @@ void CreateControls(HWND hwnd) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
 
-    // Calculate left and right panel widths (left 50%, right 50%)
-    int leftWidth = static_cast<int>(width * 0.45); // 45% for controls
-    int rightWidth = static_cast<int>(width * 0.50); // 50% for visualization
-    int margin = 10;
+    // Calculate left and right panel widths (left 16%, right 80% with 4% margin between)
+    int leftWidth = static_cast<int>(width * 0.16); // Reduced to 16% for controls (further reduced from 20%)
+    int rightWidth = static_cast<int>(width * 0.80); // 80% for visualization
+    int margin = static_cast<int>(width * 0.02); // Responsive margin
 
     // Left panel (controls)
     int leftStart = margin;
     int rightStart = leftStart + leftWidth + margin;
 
     // Top section: Preset selection
-    CreateWindow("Static", "Equation Preset:", WS_VISIBLE | WS_CHILD, leftStart, 10, 100, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    HWND hPresetCombo = CreateWindow("ComboBox", "",
-                                     WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                     leftStart + 110, 8, 200, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
+    int presetLabelWidth = static_cast<int>(leftWidth * 0.28); // About 28% of the left panel width
+    g_appData.hPresetLabel = CreateWindow("Static", "Equation Preset:", WS_VISIBLE | WS_CHILD, leftStart, 10, presetLabelWidth, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hPresetCombo = CreateWindow("ComboBox", "",
+                                          WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+                                          leftStart + presetLabelWidth, 8, leftWidth - presetLabelWidth - 10, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
 
     // Add preset options
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Select Preset...");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Laplace Equation");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Poisson Equation");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Helmholtz Equation");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Convection-Diffusion");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Reaction-Diffusion");
-    SendMessage(hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"General Elliptic");
-    SendMessage(hPresetCombo, CB_SETCURSEL, 0, 0); // Set default selection
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Select Preset...");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Laplace Equation");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Poisson Equation");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Helmholtz Equation");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Convection-Diffusion");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Reaction-Diffusion");
+    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"General Elliptic");
+    SendMessage(g_appData.hPresetCombo, CB_SETCURSEL, 0, 0); // Set default selection
 
     // Second section: Buttons (Solve, Reset, Export, Help)
     int buttonY = 45;
-    CreateWindow("Button", "Solve", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                 leftStart, buttonY, 80, 30, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Reset", WS_VISIBLE | WS_CHILD,
-                 leftStart + 90, buttonY, 80, 30, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Export", WS_VISIBLE | WS_CHILD,
-                 leftStart + 180, buttonY, 80, 30, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Help", WS_VISIBLE | WS_CHILD,
-                 leftStart + 270, buttonY, 80, 30, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
 
-    // Third section: Equation coefficients (in group box)
-    int coeffY = 90;
-    HWND hCoeffGroup = CreateWindow("Button", "Equation Coefficients",
+    // Calculate responsive button width and spacing
+    int buttonWidth = static_cast<int>(leftWidth * 0.18); // About 18% of the left panel width
+    int buttonSpacing = static_cast<int>(leftWidth * 0.02); // 2% of width spacing
+
+    CreateWindow("Button", "Solve", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                 leftStart, buttonY, buttonWidth, 30, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Reset", WS_VISIBLE | WS_CHILD,
+                 leftStart + buttonWidth + buttonSpacing, buttonY, buttonWidth, 30, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Export", WS_VISIBLE | WS_CHILD,
+                 leftStart + (buttonWidth + buttonSpacing) * 2, buttonY, buttonWidth, 30, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
+    CreateWindow("Button", "Help", WS_VISIBLE | WS_CHILD,
+                 leftStart + (buttonWidth + buttonSpacing) * 3, buttonY, buttonWidth, 30, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
+
+    // Third section: Equation coefficients (in group box) - more compact size
+    int coeffY = 110;  // Moved down to create more space from buttons
+    g_appData.hCoeffGroup = CreateWindow("Button", "Equation Coefficients",
                                     WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                    leftStart, coeffY, leftWidth - 20, 200, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                    leftStart, coeffY, leftWidth - 10, 200, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     int coeffStartY = coeffY + 20;
-    CreateWindow("Static", "a11(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA11Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY-2, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    int coeffLabelWidth = static_cast<int>(leftWidth * 0.15);  // Reduced width for labels (like "a11(x,y):")
+    int coeffFieldWidth = static_cast<int>(leftWidth * 0.28);  // Reduced width for text fields
+    int coeffSpacingX = coeffLabelWidth + 5;  // Reduced spacing between label and field
 
-    CreateWindow("Static", "a12(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA12Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY-2, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[0] = CreateWindow("Static", "a11(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA11Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX, coeffStartY-2, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "a22(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 30, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hA22Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 28, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[1] = CreateWindow("Static", "a12(x,y):", WS_VISIBLE | WS_CHILD, leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA12Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY-2, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "b1(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 30, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hB1Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY + 28, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[2] = CreateWindow("Static", "a22(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 30, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hA22Edit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX, coeffStartY + 28, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "b2(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 60, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hB2Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 58, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[3] = CreateWindow("Static", "b1(x,y):", WS_VISIBLE | WS_CHILD, leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY + 30, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hB1Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY + 28, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "c(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 60, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hCEdit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 295, coeffStartY + 58, 120, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[4] = CreateWindow("Static", "b2(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 60, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hB2Edit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX, coeffStartY + 58, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "f(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 90, 70, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hFEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 85, coeffStartY + 88, 330, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCoeffLabels[5] = CreateWindow("Static", "c(x,y):", WS_VISIBLE | WS_CHILD, leftStart + coeffSpacingX + coeffFieldWidth + 10, coeffStartY + 60, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hCEdit = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX + coeffFieldWidth + coeffLabelWidth + 10, coeffStartY + 58, coeffFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+
+    g_appData.hCoeffLabels[6] = CreateWindow("Static", "f(x,y):", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 90, coeffLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hFEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + coeffSpacingX, coeffStartY + 88, coeffFieldWidth * 2 + coeffLabelWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     // Mesh parameters
-    CreateWindow("Static", "Lx:", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hLxEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 45, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    CreateWindow("Static", "Ly:", WS_VISIBLE | WS_CHILD, leftStart + 115, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hLyEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 150, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    CreateWindow("Static", "Nx:", WS_VISIBLE | WS_CHILD, leftStart + 220, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hNxEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 255, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    CreateWindow("Static", "Ny:", WS_VISIBLE | WS_CHILD, leftStart + 325, coeffStartY + 125, 30, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
-    g_appData.hNyEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 360, coeffStartY + 123, 60, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    int meshLabelWidth = static_cast<int>(leftWidth * 0.06);  // Reduced width for labels like "Lx:"
+    int meshFieldWidth = static_cast<int>(leftWidth * 0.10);  // Reduced width for text fields
+    int meshSpacing = static_cast<int>(leftWidth * 0.02);     // Reduced spacing between elements
+
+    g_appData.hMeshLabels[0] = CreateWindow("Static", "Lx:", WS_VISIBLE | WS_CHILD, leftStart + 10, coeffStartY + 125, meshLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hLxEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hMeshLabels[1] = CreateWindow("Static", "Ly:", WS_VISIBLE | WS_CHILD, leftStart + 10 + meshLabelWidth + meshFieldWidth + meshSpacing, coeffStartY + 125, meshLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hLyEdit = CreateWindow("Edit", "1.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + meshLabelWidth + meshFieldWidth + meshSpacing + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hMeshLabels[2] = CreateWindow("Static", "Nx:", WS_VISIBLE | WS_CHILD, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 2, coeffStartY + 125, meshLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNxEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 2 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hMeshLabels[3] = CreateWindow("Static", "Ny:", WS_VISIBLE | WS_CHILD, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 3, coeffStartY + 125, meshLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNyEdit = CreateWindow("Edit", "20", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + (meshLabelWidth + meshFieldWidth + meshSpacing) * 3 + meshLabelWidth, coeffStartY + 123, meshFieldWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     // Fourth section: Boundary conditions (in group box)
     int bcY = coeffY + 210;
-    HWND hBCGroup = CreateWindow("Button", "Boundary Conditions",
+    g_appData.hBCGroup = CreateWindow("Button", "Boundary Conditions",
                                  WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                 leftStart, bcY, leftWidth - 20, 160, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                 leftStart, bcY, leftWidth - 10, 160, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     int bcStartY = bcY + 20;
-    CreateWindow("Static", "West:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    int bcLabelWidth = static_cast<int>(leftWidth * 0.08);  // Reduced width for labels like "West:"
+    int bcComboWidth = static_cast<int>(leftWidth * 0.18);  // Reduced width for combo boxes
+    int bcValueWidth = static_cast<int>(leftWidth * 0.18);  // Reduced width for value fields
+
+    // Calculate positions for east/south controls to avoid overflow
+    int eastStartX = leftStart + static_cast<int>(leftWidth * 0.5); // Position on the right half of the group box
+
+    g_appData.hBCLabels[0] = CreateWindow("Static", "West:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY, bcLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hWestBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                leftStart + 55, bcStartY-2, 80, 60, hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
+                                leftStart + 10 + bcLabelWidth, bcStartY-2, bcComboWidth, 60, hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
     SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
     SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
     SendMessage(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
-    g_appData.hWestValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 145, bcStartY-2, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    // Calculate available space for West value field to prevent overflow
+    int westValueWidth = eastStartX - (leftStart + 10 + bcLabelWidth + bcComboWidth + 10) - 5;
+    g_appData.hWestValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + bcLabelWidth + bcComboWidth + 10, bcStartY-2, westValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "East:", WS_VISIBLE | WS_CHILD, leftStart + 240, bcStartY, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hBCLabels[1] = CreateWindow("Static", "East:", WS_VISIBLE | WS_CHILD, eastStartX, bcStartY, bcLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hEastBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                leftStart + 285, bcStartY-2, 80, 60, hwnd, (HMENU)2002, GetModuleHandle(NULL), NULL);
+                                eastStartX + bcLabelWidth, bcStartY-2, bcComboWidth, 60, hwnd, (HMENU)2002, GetModuleHandle(NULL), NULL);
     SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
     SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
     SendMessage(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
-    g_appData.hEastValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 375, bcStartY-2, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    // Calculate available space for East value field to prevent overflow
+    int eastValueWidth = leftWidth - 15 - (eastStartX + bcLabelWidth + bcComboWidth + 5);
+    g_appData.hEastValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, eastStartX + bcLabelWidth + bcComboWidth + 5, bcStartY-2, eastValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "South:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY + 35, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hBCLabels[2] = CreateWindow("Static", "South:", WS_VISIBLE | WS_CHILD, leftStart + 10, bcStartY + 35, bcLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hSouthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                 leftStart + 55, bcStartY + 33, 80, 60, hwnd, (HMENU)2003, GetModuleHandle(NULL), NULL);
+                                 leftStart + 10 + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, hwnd, (HMENU)2003, GetModuleHandle(NULL), NULL);
     SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
     SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
     SendMessage(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
-    g_appData.hSouthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 145, bcStartY + 33, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hSouthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + bcLabelWidth + bcComboWidth + 10, bcStartY + 33, westValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    CreateWindow("Static", "North:", WS_VISIBLE | WS_CHILD, leftStart + 240, bcStartY + 35, 40, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hBCLabels[3] = CreateWindow("Static", "North:", WS_VISIBLE | WS_CHILD, eastStartX, bcStartY + 35, bcLabelWidth, 20, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hNorthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                 leftStart + 285, bcStartY + 33, 80, 60, hwnd, (HMENU)2004, GetModuleHandle(NULL), NULL);
+                                 eastStartX + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, hwnd, (HMENU)2004, GetModuleHandle(NULL), NULL);
     SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
     SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
     SendMessage(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
-    g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 375, bcStartY + 33, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, eastStartX + bcLabelWidth + bcComboWidth + 5, bcStartY + 33, eastValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    // Fifth section: Solution information panel (in group box)
-    int solInfoY = bcY + 180; // Position below boundary conditions
-    HWND hSolInfoGroup = CreateWindow("Button", "Solution Information",
-                                      WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
-                                      leftStart, solInfoY, leftWidth - 20, 120, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    // Fifth section: Solution information panel (in group box) - extend to bottom
+    int bcSectionHeight = 160; // Height of boundary conditions group box
+    int solInfoY = bcY + bcSectionHeight + 10; // Position right after boundary conditions
+    int solInfoHeight = height - solInfoY - 50; // Extend to above status bar (leaving space for status bar)
+
+    g_appData.hSolInfoGroup = CreateWindow("Button", "Solution Information",
+                                           WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                           leftStart, solInfoY, leftWidth - 10, solInfoHeight, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     // Create a static control to display solution information
     g_appData.hSolutionInfo = CreateWindow("Edit", "No solution computed yet. Click 'Solve' to begin.",
                                            WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_READONLY,
-                                           leftStart + 10, solInfoY + 20, leftWidth - 40, 90, hwnd, NULL, GetModuleHandle(NULL), NULL);
+                                           leftStart + 10, solInfoY + 20, leftWidth - 25, solInfoHeight - 30, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     // Right panel: Visualization
     g_appData.hVisualFrame = CreateWindow("Static", "Solution Visualization",
