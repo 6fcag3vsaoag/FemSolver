@@ -10,6 +10,8 @@
 #include <sstream>
 #include <fstream>
 #include <algorithm>
+#include <numeric>
+#include <iomanip>
 
 // Define window class name
 const char g_szClassName[] = "FemSolverWindowClass";
@@ -36,12 +38,18 @@ struct AppData {
     HWND hPresetCombo;
     HWND hVisualFrame;
     HWND hStatus;
+    HWND hSolutionInfo;  // Solution information display
 
     // Boundary condition combo boxes
     HWND hWestBC, hEastBC, hSouthBC, hNorthBC;
 
     // Solver instance
     FemSolver* solver;
+
+    // Last computed solution and mesh (for visualization)
+    std::vector<double> lastSolution;
+    Mesh lastMesh;
+    bool hasLastSolution = false;
 };
 
 AppData g_appData;
@@ -118,7 +126,7 @@ void GUIApp::run() {
         g_szClassName,
         "Finite Element Method Solver - Elliptic Equations",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 1400, 900,  // Increased size for better layout
+        CW_USEDEFAULT, CW_USEDEFAULT, 1400, 1000,  // Increased size for better layout with solution info panel
         NULL, NULL, GetModuleHandle(NULL), NULL
     );
 
@@ -201,9 +209,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             {
                 // Handle painting for the visualization frame
                 HWND visualFrame = g_appData.hVisualFrame;
-                if (visualFrame && IsWindow(hwnd)) {
+                if (visualFrame && IsWindow(visualFrame)) {
                     // Check if this paint message is for the visualization frame
-                    if (reinterpret_cast<HWND>(wParam) == visualFrame) {
+                    if (wParam == NULL || reinterpret_cast<HWND>(wParam) == visualFrame) {
                         PAINTSTRUCT ps;
                         HDC hdc = BeginPaint(visualFrame, &ps);
 
@@ -215,14 +223,127 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         FillRect(hdc, &rect, bgBrush);
                         DeleteObject(bgBrush);
 
-                        // If we have a solution, visualize it
-                        if (g_appData.solver) {
+                        // Visualize the solution
+                        // First, try to use the locally stored solution if available
+                        if (g_appData.hasLastSolution && !g_appData.lastSolution.empty()) {
+                            const std::vector<double>& solution = g_appData.lastSolution;
+                            const Mesh& mesh = g_appData.lastMesh;
+
+                            // Draw title
+                            SetTextColor(hdc, RGB(0, 0, 0));
+                            SetBkMode(hdc, TRANSPARENT);
+                            std::string title = "Solution Visualization";
+                            TextOutA(hdc, 10, 10, title.c_str(), static_cast<int>(title.length()));
+
+                            // Draw solution stats
+                            double min_val = *std::min_element(solution.begin(), solution.end());
+                            double max_val = *std::max_element(solution.begin(), solution.end());
+
+                            std::ostringstream stats;
+                            stats << "Nodes: " << solution.size()
+                                  << ", Elements: " << mesh.elements.size()
+                                  << "\nMin: " << std::fixed << std::setprecision(3) << min_val
+                                  << ", Max: " << std::fixed << std::setprecision(3) << max_val;
+                            TextOutA(hdc, 10, 30, stats.str().c_str(), static_cast<int>(stats.str().length()));
+
+                            // Draw a simplified visualization
+                            int visChartLeft = 10;
+                            int visChartTop = 60;
+                            int visChartWidth = rect.right - 20;
+                            int visChartHeight = rect.bottom - 80;
+
+                            if (visChartWidth > 20 && visChartHeight > 20) {
+                                // Draw bounding rectangle
+                                Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
+
+                                // Draw solution as a color gradient if we have data
+                                if (solution.size() >= 4) {
+                                    double localMinVal = *std::min_element(solution.begin(), solution.end());
+                                    double localMaxVal = *std::max_element(solution.begin(), solution.end());
+                                    double range = (localMaxVal == localMinVal) ? 1.0 : (localMaxVal - localMinVal);
+
+                                    // Use a simplified grid view based on the mesh
+                                    int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for display
+                                    int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
+
+                                    int cellWidth = visChartWidth / gridX;
+                                    int cellHeight = visChartHeight / gridY;
+
+                                    if (cellWidth >= 1 && cellHeight >= 1) {
+                                        for (int y = 0; y < gridY && y < g_appData.Ny; y++) {
+                                            for (int x = 0; x < gridX && x < g_appData.Nx; x++) {
+                                                int idx = y * g_appData.Nx + x;
+                                                if (idx >= 0 && idx < static_cast<int>(solution.size())) {
+                                                    double val = solution[idx];
+                                                    double normVal = (val - localMinVal) / range;
+
+                                                    // Create color based on solution value (blue=low, red=high)
+                                                    int r = static_cast<int>(normVal * 255);
+                                                    int b = static_cast<int>((1.0 - normVal) * 255);
+                                                    int g = 50; // Keep some green
+
+                                                    HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
+                                                    RECT cellRect;
+                                                    cellRect.left = visChartLeft + x * cellWidth;
+                                                    cellRect.top = visChartTop + y * cellHeight;
+                                                    cellRect.right = cellRect.left + cellWidth;
+                                                    cellRect.bottom = cellRect.top + cellHeight;
+
+                                                    FillRect(hdc, &cellRect, cellBrush);
+                                                    FrameRect(hdc, &cellRect, (HBRUSH)GetStockObject(BLACK_BRUSH));
+                                                    DeleteObject(cellBrush);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Draw legend
+                                    int legendX = visChartLeft + visChartWidth + 5;
+                                    int legendY = visChartTop;
+                                    int legendHeight = 100;
+                                    int legendWidth = 20;
+
+                                    if (legendY + legendHeight < rect.bottom && legendX + legendWidth < rect.right) {
+                                        // Draw color legend
+                                        for (int i = 0; i < legendHeight; i++) {
+                                            double ratio = static_cast<double>(i) / legendHeight;
+                                            int r = static_cast<int>(ratio * 255);
+                                            int b = static_cast<int>((1.0 - ratio) * 255);
+                                            int g = 50;
+
+                                            HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
+                                            RECT legendRect;
+                                            legendRect.left = legendX;
+                                            legendRect.top = legendY + i;
+                                            legendRect.right = legendX + legendWidth;
+                                            legendRect.bottom = legendY + i + 1;
+                                            FillRect(hdc, &legendRect, legendBrush);
+                                            DeleteObject(legendBrush);
+                                        }
+
+                                        // Draw legend labels
+                                        std::ostringstream lowLabel;
+                                        lowLabel << std::fixed << std::setprecision(3) << localMinVal;
+                                        std::ostringstream highLabel;
+                                        highLabel << std::fixed << std::setprecision(3) << localMaxVal;
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
+                                    }
+                                }
+                            }
+                        } else if (g_appData.solver) {
+                            // If no stored solution, but solver is available, try to get from solver
                             EllipticApp* ellipticApp = g_appData.solver->getApp();
                             if (ellipticApp) {
                                 const std::vector<double>& solution = ellipticApp->getSolution();
                                 const Mesh& mesh = ellipticApp->getMesh();
 
                                 if (!solution.empty()) {
+                                    // Store the solution locally for future visualization
+                                    g_appData.lastSolution = solution;
+                                    g_appData.lastMesh = mesh;
+                                    g_appData.hasLastSolution = true;
+
                                     // Draw title
                                     SetTextColor(hdc, RGB(0, 0, 0));
                                     SetBkMode(hdc, TRANSPARENT);
@@ -235,8 +356,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                                     std::ostringstream stats;
                                     stats << "Nodes: " << solution.size()
-                                          << ", Min: " << min_val
-                                          << ", Max: " << max_val;
+                                          << ", Elements: " << mesh.elements.size()
+                                          << "\nMin: " << std::fixed << std::setprecision(3) << min_val
+                                          << ", Max: " << std::fixed << std::setprecision(3) << max_val;
                                     TextOutA(hdc, 10, 30, stats.str().c_str(), static_cast<int>(stats.str().length()));
 
                                     // Draw a simplified visualization
@@ -256,8 +378,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                             double range = (localMaxVal == localMinVal) ? 1.0 : (localMaxVal - localMinVal);
 
                                             // Use a simplified grid view based on the mesh
-                                            int gridX = (g_appData.Nx < 40) ? g_appData.Nx : 40;  // Limit grid for display
-                                            int gridY = (g_appData.Ny < 40) ? g_appData.Ny : 40;
+                                            int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for display
+                                            int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
 
                                             int cellWidth = visChartWidth / gridX;
                                             int cellHeight = visChartHeight / gridY;
@@ -289,33 +411,68 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                                     }
                                                 }
                                             }
+
+                                            // Draw legend
+                                            int legendX = visChartLeft + visChartWidth + 5;
+                                            int legendY = visChartTop;
+                                            int legendHeight = 100;
+                                            int legendWidth = 20;
+
+                                            if (legendY + legendHeight < rect.bottom && legendX + legendWidth < rect.right) {
+                                                // Draw color legend
+                                                for (int i = 0; i < legendHeight; i++) {
+                                                    double ratio = static_cast<double>(i) / legendHeight;
+                                                    int r = static_cast<int>(ratio * 255);
+                                                    int b = static_cast<int>((1.0 - ratio) * 255);
+                                                    int g = 50;
+
+                                                    HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
+                                                    RECT legendRect;
+                                                    legendRect.left = legendX;
+                                                    legendRect.top = legendY + i;
+                                                    legendRect.right = legendX + legendWidth;
+                                                    legendRect.bottom = legendY + i + 1;
+                                                    FillRect(hdc, &legendRect, legendBrush);
+                                                    DeleteObject(legendBrush);
+                                                }
+
+                                                // Draw legend labels
+                                                std::ostringstream lowLabel;
+                                                lowLabel << std::fixed << std::setprecision(3) << localMinVal;
+                                                std::ostringstream highLabel;
+                                                highLabel << std::fixed << std::setprecision(3) << localMaxVal;
+                                                TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
+                                                TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
+                                            }
                                         }
                                     }
                                 } else {
                                     // No solution yet - show placeholder
                                     SetTextColor(hdc, RGB(128, 128, 128));
                                     std::string placeholder = "No solution computed yet.\nClick 'Solve' to compute.";
-                                    DrawTextA(hdc, placeholder.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                                    RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
+                                    DrawTextA(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
                                 }
                             } else {
                                 // No elliptic app
                                 SetTextColor(hdc, RGB(128, 128, 128));
                                 std::string noAppText = "Solver not initialized.\nRun from main application.";
-                                DrawTextA(hdc, noAppText.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                                RECT noAppRect = {10, 10, rect.right - 10, rect.bottom - 10};
+                                DrawTextA(hdc, noAppText.c_str(), -1, &noAppRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
                             }
                         } else {
                             // No solver - show instructions
                             SetTextColor(hdc, RGB(128, 128, 128));
                             std::string noSolverText = "Solver not available.\nNo solution to visualize.";
-                            DrawTextA(hdc, noSolverText.c_str(), -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                            RECT noSolverRect = {10, 10, rect.right - 10, rect.bottom - 10};
+                            DrawTextA(hdc, noSolverText.c_str(), -1, &noSolverRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
                         }
 
                         EndPaint(visualFrame, &ps);
-                        break; // Handle internally, don't pass to DefWindowProc
+                        return 0; // Handle internally, don't pass to DefWindowProc
                     }
                 }
             }
-            // Intentionally not calling DefWindowProc for visualization frame
             // Pass to default for main window painting
             return DefWindowProc(hwnd, msg, wParam, lParam);
 
@@ -449,12 +606,23 @@ void CreateControls(HWND hwnd) {
     SendMessage(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
     g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 375, bcStartY + 33, 80, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
+    // Fifth section: Solution information panel (in group box)
+    int solInfoY = bcY + 180; // Position below boundary conditions
+    HWND hSolInfoGroup = CreateWindow("Button", "Solution Information",
+                                      WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
+                                      leftStart, solInfoY, leftWidth - 20, 120, hwnd, NULL, GetModuleHandle(NULL), NULL);
+
+    // Create a static control to display solution information
+    g_appData.hSolutionInfo = CreateWindow("Edit", "No solution computed yet. Click 'Solve' to begin.",
+                                           WS_VISIBLE | WS_CHILD | WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_READONLY,
+                                           leftStart + 10, solInfoY + 20, leftWidth - 40, 90, hwnd, NULL, GetModuleHandle(NULL), NULL);
+
     // Right panel: Visualization
     g_appData.hVisualFrame = CreateWindow("Static", "Solution Visualization",
                                          WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
                                          rightStart, 10, rightWidth - 20, height - 60, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
-    // Status bar at the bottom
+    // Status bar at the bottom - adjusted for the solution info panel
     g_appData.hStatus = CreateWindow("Static", "Ready - Select an equation preset to begin",
                                     WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
                                     10, height - 40, width - 20, 30, hwnd, NULL, GetModuleHandle(NULL), NULL);
@@ -553,6 +721,11 @@ void OnSolveButtonClicked(HWND hwnd) {
                 const Mesh& mesh = ellipticApp->getMesh();
 
                 if (!solution.empty()) {
+                    // Store the computed solution locally for persistent visualization
+                    g_appData.lastSolution = solution;
+                    g_appData.lastMesh = mesh;
+                    g_appData.hasLastSolution = true;
+
                     double min_val = *std::min_element(solution.begin(), solution.end());
                     double max_val = *std::max_element(solution.begin(), solution.end());
 
@@ -676,6 +849,38 @@ void OnSolveButtonClicked(HWND hwnd) {
 
                         ReleaseDC(g_appData.hVisualFrame, hdc);
                     }
+
+                    // Update the solution information panel with detailed information
+                    std::ostringstream solutionInfo;
+                    solutionInfo << "Solution Details:\n";
+                    solutionInfo << "-------------------\n";
+                    solutionInfo << "Nodes: " << solution.size() << "\n";
+                    solutionInfo << "Elements: " << mesh.elements.size() << "\n";
+                    solutionInfo << "Domain: [0, " << g_appData.Lx << "] x [0, " << g_appData.Ly << "]\n";
+                    solutionInfo << "Mesh: " << g_appData.Nx << " x " << g_appData.Ny << " nodes\n";
+                    solutionInfo << "Min value: " << min_val << "\n";
+                    solutionInfo << "Max value: " << max_val << "\n";
+                    solutionInfo << "Avg value: " << (solution.empty() ? 0.0 : std::accumulate(solution.begin(), solution.end(), 0.0) / solution.size()) << "\n\n";
+                    solutionInfo << "Coefficients:\n";
+                    solutionInfo << "  a11(x,y) = " << g_appData.a11Func << "\n";
+                    solutionInfo << "  a12(x,y) = " << g_appData.a12Func << "\n";
+                    solutionInfo << "  a22(x,y) = " << g_appData.a22Func << "\n";
+                    solutionInfo << "  b1(x,y) = " << g_appData.b1Func << "\n";
+                    solutionInfo << "  b2(x,y) = " << g_appData.b2Func << "\n";
+                    solutionInfo << "  c(x,y) = " << g_appData.cFunc << "\n";
+                    solutionInfo << "  f(x,y) = " << g_appData.fFunc << "\n\n";
+                    solutionInfo << "Boundary Conditions:\n";
+                    solutionInfo << "  West: " << ((westBC == "dirichlet") ? "Dirichlet" : "Neumann")
+                                 << " (value=" << westVal << ")\n";
+                    solutionInfo << "  East: " << ((eastBC == "dirichlet") ? "Dirichlet" : "Neumann")
+                                 << " (value=" << eastVal << ")\n";
+                    solutionInfo << "  South: " << ((southBC == "dirichlet") ? "Dirichlet" : "Neumann")
+                                 << " (value=" << southVal << ")\n";
+                    solutionInfo << "  North: " << ((northBC == "dirichlet") ? "Dirichlet" : "Neumann")
+                                 << " (value=" << northVal << ")\n\n";
+                    solutionInfo << "Solution computed successfully at: " << __DATE__ << " " << __TIME__;
+
+                    SetWindowText(g_appData.hSolutionInfo, solutionInfo.str().c_str());
                 }
             } else {
                 MessageBox(hwnd, "Failed to access solver application.",
@@ -690,6 +895,13 @@ void OnSolveButtonClicked(HWND hwnd) {
         std::ostringstream oss;
         oss << "Error: " << e.what();
         SetWindowText(g_appData.hStatus, oss.str().c_str());
+
+        // Also update the solution info panel to show the error
+        std::string errorInfo = "Solution Error:\n";
+        errorInfo += "-------------------\n";
+        errorInfo += "An error occurred during solution:\n";
+        errorInfo += e.what();
+        SetWindowText(g_appData.hSolutionInfo, errorInfo.c_str());
     }
 }
 
