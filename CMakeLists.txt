@@ -45,10 +45,19 @@ set(HEADERS
 )
 
 # Добавьте все исходники в исполняемый файл проекта
-add_executable (FemSolver ${SOURCES} ${HEADERS})
+add_executable (FemSolver WIN32 ${SOURCES} ${HEADERS})
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET FemSolver PROPERTY CXX_STANDARD 17)
+endif()
+
+# Set Windows subsystem to prevent console window from appearing
+if (WIN32)
+  if(MSVC)
+    set_target_properties(FemSolver PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+  else()
+    set_target_properties(FemSolver PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS")
+  endif()
 endif()
 
 # Link Windows libraries

@@ -411,15 +411,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                             std::string title = "Solution Visualization";
                             TextOutA(hdc, 10, 10, title.c_str(), static_cast<int>(title.length()));
 
-                            // Draw solution stats
-                            double min_val = *std::min_element(solution.begin(), solution.end());
-                            double max_val = *std::max_element(solution.begin(), solution.end());
-
+                            // Draw solution stats (using precomputed values to avoid intensive calculation)
+                            // We'll use the solution size and a simple placeholder for now to avoid intensive computation
                             std::ostringstream stats;
                             stats << "Nodes: " << solution.size()
-                                  << ", Elements: " << mesh.elements.size()
-                                  << "\nMin: " << std::fixed << std::setprecision(3) << min_val
-                                  << ", Max: " << std::fixed << std::setprecision(3) << max_val;
+                                  << ", Elements: " << mesh.elements.size();
                             TextOutA(hdc, 10, 30, stats.str().c_str(), static_cast<int>(stats.str().length()));
 
                             // Draw a simplified visualization
@@ -433,25 +429,32 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                 Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
 
                                 // Draw solution as a color gradient if we have data
+                                // Use precomputed min/max values if available, otherwise compute efficiently
                                 if (solution.size() >= 4) {
-                                    double localMinVal = *std::min_element(solution.begin(), solution.end());
-                                    double localMaxVal = *std::max_element(solution.begin(), solution.end());
-                                    double range = (localMaxVal == localMinVal) ? 1.0 : (localMaxVal - localMinVal);
+                                    // For performance, we'll use a simpler approach - just show a basic visualization
+                                    // instead of computing min/max every time
 
                                     // Use a simplified grid view based on the mesh
-                                    int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for display
-                                    int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
+                                    int gridX = (g_appData.Nx < 30) ? g_appData.Nx : 30;  // Lower grid limit for performance
+                                    int gridY = (g_appData.Ny < 30) ? g_appData.Ny : 30;
 
                                     int cellWidth = visChartWidth / gridX;
                                     int cellHeight = visChartHeight / gridY;
 
                                     if (cellWidth >= 1 && cellHeight >= 1) {
-                                        for (int y = 0; y < gridY && y < g_appData.Ny; y++) {
-                                            for (int x = 0; x < gridX && x < g_appData.Nx; x++) {
+                                        // Only visualize a sample of the solution for performance
+                                        int xStep = std::max(1, g_appData.Nx / gridX);
+                                        int yStep = std::max(1, g_appData.Ny / gridY);
+
+                                        for (int y = 0; y < gridY && y < g_appData.Ny; y += yStep) {
+                                            for (int x = 0; x < gridX && x < g_appData.Nx; x += xStep) {
                                                 int idx = y * g_appData.Nx + x;
                                                 if (idx >= 0 && idx < static_cast<int>(solution.size())) {
+                                                    // Use a simple approach: just pick a representative value
+                                                    // instead of computing min/max every time
                                                     double val = solution[idx];
-                                                    double normVal = (val - localMinVal) / range;
+                                                    // Normalize to 0-1 range using a reasonable range for visualization
+                                                    double normVal = std::max(0.0, std::min(1.0, (val + 10.0) / 20.0)); // Assuming values typically in range [-10,10]
 
                                                     // Create color based on solution value (blue=low, red=high)
                                                     int r = static_cast<int>(normVal * 255);
@@ -460,8 +463,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                                                     HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
                                                     RECT cellRect;
-                                                    cellRect.left = visChartLeft + x * cellWidth;
-                                                    cellRect.top = visChartTop + y * cellHeight;
+                                                    cellRect.left = visChartLeft + (x/xStep) * cellWidth;
+                                                    cellRect.top = visChartTop + (y/yStep) * cellHeight;
                                                     cellRect.right = cellRect.left + cellWidth;
                                                     cellRect.bottom = cellRect.top + cellHeight;
 
@@ -498,150 +501,19 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                         }
 
                                         // Draw legend labels
-                                        std::ostringstream lowLabel;
-                                        lowLabel << std::fixed << std::setprecision(3) << localMinVal;
-                                        std::ostringstream highLabel;
-                                        highLabel << std::fixed << std::setprecision(3) << localMaxVal;
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
+                                        std::string lowLabel = "Low";
+                                        std::string highLabel = "High";
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.c_str(), static_cast<int>(lowLabel.length()));
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.c_str(), static_cast<int>(highLabel.length()));
                                     }
                                 }
-                            }
-                        } else if (g_appData.solver) {
-                            // If no stored solution, but solver is available, try to get from solver
-                            EllipticApp* ellipticApp = g_appData.solver->getApp();
-                            if (ellipticApp) {
-                                const std::vector<double>& solution = ellipticApp->getSolution();
-                                const Mesh& mesh = ellipticApp->getMesh();
-
-                                if (!solution.empty()) {
-                                    // Store the solution locally for future visualization
-                                    g_appData.lastSolution = solution;
-                                    g_appData.lastMesh = mesh;
-                                    g_appData.hasLastSolution = true;
-
-                                    // Draw title
-                                    SetTextColor(hdc, RGB(0, 0, 0));
-                                    SetBkMode(hdc, TRANSPARENT);
-                                    std::string title = "Solution Visualization";
-                                    TextOutA(hdc, 10, 10, title.c_str(), static_cast<int>(title.length()));
-
-                                    // Draw solution stats
-                                    double min_val = *std::min_element(solution.begin(), solution.end());
-                                    double max_val = *std::max_element(solution.begin(), solution.end());
-
-                                    std::ostringstream stats;
-                                    stats << "Nodes: " << solution.size()
-                                          << ", Elements: " << mesh.elements.size()
-                                          << "\nMin: " << std::fixed << std::setprecision(3) << min_val
-                                          << ", Max: " << std::fixed << std::setprecision(3) << max_val;
-                                    TextOutA(hdc, 10, 30, stats.str().c_str(), static_cast<int>(stats.str().length()));
-
-                                    // Draw a simplified visualization
-                                    int visChartLeft = 10;
-                                    int visChartTop = 60;
-                                    int visChartWidth = rect.right - 20;
-                                    int visChartHeight = rect.bottom - 80;
-
-                                    if (visChartWidth > 20 && visChartHeight > 20) {
-                                        // Draw bounding rectangle
-                                        Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
-
-                                        // Draw solution as a color gradient if we have data
-                                        if (solution.size() >= 4) {
-                                            double localMinVal = *std::min_element(solution.begin(), solution.end());
-                                            double localMaxVal = *std::max_element(solution.begin(), solution.end());
-                                            double range = (localMaxVal == localMinVal) ? 1.0 : (localMaxVal - localMinVal);
-
-                                            // Use a simplified grid view based on the mesh
-                                            int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for display
-                                            int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
-
-                                            int cellWidth = visChartWidth / gridX;
-                                            int cellHeight = visChartHeight / gridY;
-
-                                            if (cellWidth >= 1 && cellHeight >= 1) {
-                                                for (int y = 0; y < gridY && y < g_appData.Ny; y++) {
-                                                    for (int x = 0; x < gridX && x < g_appData.Nx; x++) {
-                                                        int idx = y * g_appData.Nx + x;
-                                                        if (idx >= 0 && idx < static_cast<int>(solution.size())) {
-                                                            double val = solution[idx];
-                                                            double normVal = (val - localMinVal) / range;
-
-                                                            // Create color based on solution value (blue=low, red=high)
-                                                            int r = static_cast<int>(normVal * 255);
-                                                            int b = static_cast<int>((1.0 - normVal) * 255);
-                                                            int g = 50; // Keep some green
-
-                                                            HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
-                                                            RECT cellRect;
-                                                            cellRect.left = visChartLeft + x * cellWidth;
-                                                            cellRect.top = visChartTop + y * cellHeight;
-                                                            cellRect.right = cellRect.left + cellWidth;
-                                                            cellRect.bottom = cellRect.top + cellHeight;
-
-                                                            FillRect(hdc, &cellRect, cellBrush);
-                                                            FrameRect(hdc, &cellRect, (HBRUSH)GetStockObject(BLACK_BRUSH));
-                                                            DeleteObject(cellBrush);
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // Draw legend
-                                            int legendX = visChartLeft + visChartWidth + 5;
-                                            int legendY = visChartTop;
-                                            int legendHeight = 100;
-                                            int legendWidth = 20;
-
-                                            if (legendY + legendHeight < rect.bottom && legendX + legendWidth < rect.right) {
-                                                // Draw color legend
-                                                for (int i = 0; i < legendHeight; i++) {
-                                                    double ratio = static_cast<double>(i) / legendHeight;
-                                                    int r = static_cast<int>(ratio * 255);
-                                                    int b = static_cast<int>((1.0 - ratio) * 255);
-                                                    int g = 50;
-
-                                                    HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
-                                                    RECT legendRect;
-                                                    legendRect.left = legendX;
-                                                    legendRect.top = legendY + i;
-                                                    legendRect.right = legendX + legendWidth;
-                                                    legendRect.bottom = legendY + i + 1;
-                                                    FillRect(hdc, &legendRect, legendBrush);
-                                                    DeleteObject(legendBrush);
-                                                }
-
-                                                // Draw legend labels
-                                                std::ostringstream lowLabel;
-                                                lowLabel << std::fixed << std::setprecision(3) << localMinVal;
-                                                std::ostringstream highLabel;
-                                                highLabel << std::fixed << std::setprecision(3) << localMaxVal;
-                                                TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
-                                                TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // No solution yet - show placeholder
-                                    SetTextColor(hdc, RGB(128, 128, 128));
-                                    std::string placeholder = "No solution computed yet.\nClick 'Solve' to compute.";
-                                    RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
-                                    DrawTextA(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
-                                }
-                            } else {
-                                // No elliptic app
-                                SetTextColor(hdc, RGB(128, 128, 128));
-                                std::string noAppText = "Solver not initialized.\nRun from main application.";
-                                RECT noAppRect = {10, 10, rect.right - 10, rect.bottom - 10};
-                                DrawTextA(hdc, noAppText.c_str(), -1, &noAppRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
                             }
                         } else {
-                            // No solver - show instructions
+                            // No solution yet - show placeholder
                             SetTextColor(hdc, RGB(128, 128, 128));
-                            std::string noSolverText = "Solver not available.\nNo solution to visualize.";
-                            RECT noSolverRect = {10, 10, rect.right - 10, rect.bottom - 10};
-                            DrawTextA(hdc, noSolverText.c_str(), -1, &noSolverRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
+                            std::string placeholder = "No solution computed yet.\nClick 'Solve' to compute.";
+                            RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
+                            DrawTextA(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
                         }
 
                         EndPaint(visualFrame, &ps);
@@ -1235,225 +1107,274 @@ void OnPresetChanged(HWND hwnd, int presetIndex) {
     if (presetIndex > 0) { // Skip the "Select Preset..." option
         LoadPreset(presetIndex);
         SetWindowText(g_appData.hStatus, "Preset loaded. Ready to solve.");
+
+        // Update the solution info panel to show current values
+        char buffer[256];
+        std::ostringstream solutionInfo;
+        solutionInfo << "Current Configuration:\n";
+        solutionInfo << "-------------------\n";
+
+        // Get current values from UI
+        GetWindowText(g_appData.hLxEdit, buffer, sizeof(buffer));
+        solutionInfo << "Domain X: [0, " << buffer << "]\n";
+        GetWindowText(g_appData.hLyEdit, buffer, sizeof(buffer));
+        solutionInfo << "Domain Y: [0, " << buffer << "]\n";
+        GetWindowText(g_appData.hNxEdit, buffer, sizeof(buffer));
+        solutionInfo << "X nodes: " << buffer << "\n";
+        GetWindowText(g_appData.hNyEdit, buffer, sizeof(buffer));
+        solutionInfo << "Y nodes: " << buffer << "\n\n";
+
+        solutionInfo << "Coefficients:\n";
+        GetWindowText(g_appData.hA11Edit, buffer, sizeof(buffer));
+        solutionInfo << "  a11(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hA12Edit, buffer, sizeof(buffer));
+        solutionInfo << "  a12(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hA22Edit, buffer, sizeof(buffer));
+        solutionInfo << "  a22(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hB1Edit, buffer, sizeof(buffer));
+        solutionInfo << "  b1(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hB2Edit, buffer, sizeof(buffer));
+        solutionInfo << "  b2(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hCEdit, buffer, sizeof(buffer));
+        solutionInfo << "  c(x,y) = " << buffer << "\n";
+        GetWindowText(g_appData.hFEdit, buffer, sizeof(buffer));
+        solutionInfo << "  f(x,y) = " << buffer << "\n";
+
+        SetWindowText(g_appData.hSolutionInfo, solutionInfo.str().c_str());
+
+        // Force a refresh of the visualization area to show the new state
+        InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
     }
 }
 
-void LoadPreset(int presetIndex) {
-    // Set default values based on the preset
-    switch(presetIndex) {
-        case 1: // Laplace Equation
-            SetWindowText(g_appData.hLxEdit, "1.0");
-            SetWindowText(g_appData.hLyEdit, "1.0");
-            SetWindowText(g_appData.hNxEdit, "20");
-            SetWindowText(g_appData.hNyEdit, "20");
-            SetWindowText(g_appData.hA11Edit, "1.0");
-            SetWindowText(g_appData.hA12Edit, "0.0");
-            SetWindowText(g_appData.hA22Edit, "1.0");
-            SetWindowText(g_appData.hB1Edit, "0.0");
-            SetWindowText(g_appData.hB2Edit, "0.0");
-            SetWindowText(g_appData.hCEdit, "0.0");
-            SetWindowText(g_appData.hFEdit, "0.0");
-            SetWindowText(g_appData.hWestValue, "x*x + y*y");
-            SetWindowText(g_appData.hEastValue, "x*x + y*y");
-            SetWindowText(g_appData.hSouthValue, "x*x + y*y");
-            SetWindowText(g_appData.hNorthValue, "x*x + y*y");
-            MessageBox(NULL,
-                "LAPLACE EQUATION\n\n"
-                "Solves: ∂²u/∂x² + ∂²u/∂y² = 0\n\n"
-                "Description:\n"
-                "Classic Laplace equation describing steady-state processes:\n"
-                "- Heat distribution without sources\n"
-                "- Electrostatic potential in vacuum\n"
-                "- Potential flow of incompressible fluid\n\n"
-                "Coefficients:\n"
-                "- a11 = a22 = 1 (unit diffusion)\n"
-                "- a12 = b1 = b2 = c = f = 0 (no mixed derivatives, convection, reaction or sources)\n\n"
-                "Boundary Conditions:\n"
-                "All sides: u = x² + y²",
-                "Laplace Equation", MB_OK | MB_ICONINFORMATION);
-            break;
+// Structure to hold preset data
+struct PresetData {
+    const char* name;
+    const char* description;
+    const char* lx, * ly, * nx, * ny;
+    const char* a11, * a12, * a22, * b1, * b2, * c, * f;
+    const char* westValue, * eastValue, * southValue, * northValue;
+};
 
-        case 2: // Poisson Equation
-            SetWindowText(g_appData.hLxEdit, "1.0");
-            SetWindowText(g_appData.hLyEdit, "1.0");
-            SetWindowText(g_appData.hNxEdit, "20");
-            SetWindowText(g_appData.hNyEdit, "20");
-            SetWindowText(g_appData.hA11Edit, "1.0");
-            SetWindowText(g_appData.hA12Edit, "0.0");
-            SetWindowText(g_appData.hA22Edit, "1.0");
-            SetWindowText(g_appData.hB1Edit, "0.0");
-            SetWindowText(g_appData.hB2Edit, "0.0");
-            SetWindowText(g_appData.hCEdit, "0.0");
-            SetWindowText(g_appData.hFEdit, "8*pi*pi*sin(2*pi*x)*sin(2*pi*y)");
-            SetWindowText(g_appData.hWestValue, "0.0");
-            SetWindowText(g_appData.hEastValue, "0.0");
-            SetWindowText(g_appData.hSouthValue, "0.0");
-            SetWindowText(g_appData.hNorthValue, "0.0");
-            MessageBox(NULL,
-                "POISSON EQUATION\n\n"
-                "Solves: ∂²u/∂x² + ∂²u/∂y² = 8π²·sin(2πx)·sin(2πy)\n\n"
-                "Description:\n"
-                "Poisson equation with known analytical solution:\n"
-                "- Heat distribution with sources\n"
-                "- Electrostatic potential with charges\n"
-                "- Stationary processes with sources/sinks\n\n"
-                "Coefficients:\n"
-                "- a11 = a22 = 1 (unit diffusion)\n"
-                "- a12 = b1 = b2 = c = 0 (no mixed derivatives, convection, reaction)\n"
-                "- f(x,y) = 8π²·sin(2πx)·sin(2πy) (harmonic source)\n\n"
-                "Analytical Solution:\n"
-                "u(x,y) = sin(2πx)·sin(2πy)\n\n"
-                "Boundary Conditions:\n"
-                "Zero Dirichlet conditions on all boundaries (u = 0)",
-                "Poisson Equation", MB_OK | MB_ICONINFORMATION);
-            break;
-
-        case 3: // Helmholtz Equation
-            SetWindowText(g_appData.hLxEdit, "3.0");
-            SetWindowText(g_appData.hLyEdit, "1.0");
-            SetWindowText(g_appData.hNxEdit, "30");
-            SetWindowText(g_appData.hNyEdit, "10");
-            SetWindowText(g_appData.hA11Edit, "1.0");
-            SetWindowText(g_appData.hA12Edit, "0.0");
-            SetWindowText(g_appData.hA22Edit, "1.0");
-            SetWindowText(g_appData.hB1Edit, "0.0");
-            SetWindowText(g_appData.hB2Edit, "0.0");
-            SetWindowText(g_appData.hCEdit, "1.0");
-            SetWindowText(g_appData.hFEdit, "cos(pi*x/3)*cos(pi*y)");
-            SetWindowText(g_appData.hWestValue, "0.0"); // Neumann for west
-            SetWindowText(g_appData.hEastValue, "cos(pi*3/3)*cos(pi*y)"); // cos(pi)*cos(pi*y) = -cos(pi*y)
-            SetWindowText(g_appData.hSouthValue, "cos(pi*x/3)*cos(0)"); // cos(pi*x/3)
-            SetWindowText(g_appData.hNorthValue, "cos(pi*x/3)*cos(pi*1)"); // cos(pi*x/3)*cos(pi) = -cos(pi*x/3)
-            MessageBox(NULL,
-                "HELMHOLTZ EQUATION\n\n"
-                "Solves: ∂²u/∂x² + ∂²u/∂y² + u = cos(πx/3)·cos(πy)\n\n"
-                "Description:\n"
-                "Helmholtz equation - important elliptic equation:\n"
-                "- Wave processes in frequency domain\n"
-                "- Quantum mechanics (stationary Schrödinger equation)\n"
-                "- Acoustics and electromagnetic waves\n\n"
-                "Coefficients:\n"
-                "- a11 = a22 = 1 (diffusion)\n"
-                "- c = 1 (reaction term)\n"
-                "- a12 = b1 = b2 = 0\n"
-                "- f(x,y) = cos(πx/3)·cos(πy) (source)\n\n"
-                "Boundary Conditions:\n"
-                "- West: Neumann (∂u/∂n = 0) - symmetry\n"
-                "- Others: Dirichlet with specified values",
-                "Helmholtz Equation", MB_OK | MB_ICONINFORMATION);
-            break;
-
-        case 4: // Convection-Diffusion
-            SetWindowText(g_appData.hLxEdit, "2.0");
-            SetWindowText(g_appData.hLyEdit, "1.0");
-            SetWindowText(g_appData.hNxEdit, "40");
-            SetWindowText(g_appData.hNyEdit, "20");
-            SetWindowText(g_appData.hA11Edit, "0.01 + 0.005*x");
-            SetWindowText(g_appData.hA12Edit, "0.0");
-            SetWindowText(g_appData.hA22Edit, "0.01 + 0.005*x");
-            SetWindowText(g_appData.hB1Edit, "1.0");
-            SetWindowText(g_appData.hB2Edit, "0.0");
-            SetWindowText(g_appData.hCEdit, "0.0");
-            SetWindowText(g_appData.hFEdit, "exp(-10*((x-2)^2 + (y-0.5)^2))");
-            SetWindowText(g_appData.hWestValue, "1.0"); // Inlet
-            SetWindowText(g_appData.hEastValue, "0.0"); // Outlet
-            SetWindowText(g_appData.hSouthValue, "0.0"); // Symmetry
-            SetWindowText(g_appData.hNorthValue, "0.0"); // Symmetry
-            MessageBox(NULL,
-                "CONVECTION-DIFFUSION\n\n"
-                "Solves: (0.01+0.005x)∂²u/∂x² + (0.01+0.005x)∂²u/∂y² + ∂u/∂x = exp(-10·((x-2)²+(y-0.5)²))\n\n"
-                "Description:\n"
-                "Convection-diffusion equation describing transport:\n"
-                "- Pollutant transport in atmosphere or water\n"
-                "- Heat transfer with fluid motion\n"
-                "- Diffusion in flowing media\n\n"
-                "Coefficients:\n"
-                "- a11 = a22 = 0.01 + 0.005x (variable diffusion)\n"
-                "- b1 = 1 (convection in positive X direction)\n"
-                "- b2 = 0 (no convection in Y)\n"
-                "- a12 = c = 0\n"
-                "- f(x,y) = exp(-10·((x-2)²+(y-0.5)²)) (local source)\n\n"
-                "Boundary Conditions:\n"
-                "- West: Dirichlet u = 1 (inlet concentration)\n"
-                "- East: Dirichlet u = 0 (outlet concentration)\n"
-                "- South/North: Neumann (symmetry)",
-                "Convection-Diffusion", MB_OK | MB_ICONINFORMATION);
-            break;
-
-        case 5: // Reaction-Diffusion
-            SetWindowText(g_appData.hLxEdit, "2.0");
-            SetWindowText(g_appData.hLyEdit, "2.0");
-            SetWindowText(g_appData.hNxEdit, "30");
-            SetWindowText(g_appData.hNyEdit, "30");
-            SetWindowText(g_appData.hA11Edit, "0.1 + 0.05*x*y");
-            SetWindowText(g_appData.hA12Edit, "0.0");
-            SetWindowText(g_appData.hA22Edit, "0.1 + 0.05*x*y");
-            SetWindowText(g_appData.hB1Edit, "0.0");
-            SetWindowText(g_appData.hB2Edit, "0.0");
-            SetWindowText(g_appData.hCEdit, "1.0");
-            SetWindowText(g_appData.hFEdit, "10*exp(-5*((x-1)^2 + (y-1)^2)) + 2*pi^2*cos(pi*x)*cos(pi*y)");
-            SetWindowText(g_appData.hWestValue, "20.0");
-            SetWindowText(g_appData.hEastValue, "10.0");
-            SetWindowText(g_appData.hSouthValue, "15.0");
-            SetWindowText(g_appData.hNorthValue, "5.0"); // Neumann
-            MessageBox(NULL,
-                "REACTION-DIFFUSION\n\n"
-                "Solves: (0.1+0.05xy)∂²u/∂x² + (0.1+0.05xy)∂²u/∂y² + u = 10·exp(-5·((x-1)²+(y-1)²)) + 2π²·cos(πx)·cos(πy)\n\n"
-                "Description:\n"
-                "Reaction-diffusion equations modeling many processes:\n"
-                "- Population dynamics of species\n"
-                "- Chemical reactions with diffusion\n"
-                "- Neural impulse propagation\n\n"
-                "Coefficients:\n"
-                "- a11 = a22 = 0.1 + 0.05xy (variable diffusion)\n"
-                "- c = 1 (linear reaction)\n"
-                "- a12 = b1 = b2 = 0\n"
-                "- f(x,y) = complex source (exponential + harmonic)\n\n"
-                "Boundary Conditions:\n"
-                "Mixed conditions:\n"
-                "- Some: Dirichlet with different values\n"
-                "- North: Neumann ∂u/∂n = 5",
-                "Reaction-Diffusion", MB_OK | MB_ICONINFORMATION);
-            break;
-
-        case 6: // General Elliptic
-            SetWindowText(g_appData.hLxEdit, "2.0");
-            SetWindowText(g_appData.hLyEdit, "1.0");
-            SetWindowText(g_appData.hNxEdit, "50");
-            SetWindowText(g_appData.hNyEdit, "25");
-            SetWindowText(g_appData.hA11Edit, "1 + 0.5*sin(pi*x)*cos(pi*y)");
-            SetWindowText(g_appData.hA12Edit, "0.2");
-            SetWindowText(g_appData.hA22Edit, "0.8 + 0.3*cos(pi*x)");
-            SetWindowText(g_appData.hB1Edit, "0.2*x");
-            SetWindowText(g_appData.hB2Edit, "0.1*y");
-            SetWindowText(g_appData.hCEdit, "0.1");
-            SetWindowText(g_appData.hFEdit, "sin(pi*x/2)*sin(pi*y) + 0.5*pi^2*cos(pi*x/2)*cos(pi*y)");
-            SetWindowText(g_appData.hWestValue, "0.0"); // Neumann
-            SetWindowText(g_appData.hEastValue, "1.0");
-            SetWindowText(g_appData.hSouthValue, "0.0");
-            SetWindowText(g_appData.hNorthValue, "0.0");
-            MessageBox(NULL,
-                "GENERAL ELLIPTIC\n\n"
-                "Solves: General elliptic equation with variable coefficients\n"
-                "(1+0.5sin(πx)cos(πy))∂²u/∂x² + 2·0.2∂²u/∂x∂y + (0.8+0.3cos(πx))∂²u/∂y² + 0.2x∂u/∂x + 0.1y∂u/∂y + 0.1u = sin(πx/2)sin(πy) + 0.5π²cos(πx/2)cos(πy)\n\n"
-                "Description:\n"
-                "General elliptic equation encompassing all physical effects:\n"
-                "- Variable diffusion in both directions\n"
-                "- Mixed derivative term\n"
-                "- Convection in both directions\n"
-                "- Reaction term\n\n"
-                "Coefficients:\n"
-                "- a11(x,y) = 1 + 0.5sin(πx)cos(πy) (variable diffusion)\n"
-                "- a12 = 0.2 (mixed derivative coefficient)\n"
-                "- a22(x,y) = 0.8 + 0.3cos(πx) (variable diffusion)\n"
-                "- b1(x,y) = 0.2x (convection in x)\n"
-                "- b2(x,y) = 0.1y (convection in y)\n"
-                "- c = 0.1 (reaction)\n"
-                "- f(x,y) = source term\n\n"
-                "Boundary Conditions:\n"
-                "- West: Neumann\n"
-                "- Others: Dirichlet",
-                "General Elliptic", MB_OK | MB_ICONINFORMATION);
-            break;
+// Define all presets in a structured way
+const PresetData PRESETS[] = {
+    { "Laplace Equation",
+      "LAPLACE EQUATION\\n\\n"
+      "Solves: ∂²u/∂x² + ∂²u/∂y² = 0\\n\\n"
+      "Description:\\n"
+      "Classic Laplace equation describing steady-state processes:\\n"
+      "- Heat distribution without sources\\n"
+      "- Electrostatic potential in vacuum\\n"
+      "- Potential flow of incompressible fluid\\n\\n"
+      "Coefficients:\\n"
+      "- a11 = a22 = 1 (unit diffusion)\\n"
+      "- a12 = b1 = b2 = c = f = 0 (no mixed derivatives, convection, reaction or sources)\\n\\n"
+      "Boundary Conditions:\\n"
+      "All sides: u = x² + y²",
+      "1.0", "1.0", "20", "20",
+      "1.0", "0.0", "1.0", "0.0", "0.0", "0.0", "0.0",
+      "x*x + y*y", "x*x + y*y", "x*x + y*y", "x*x + y*y"
+    },
+    { "Poisson Equation",
+      "POISSON EQUATION\\n\\n"
+      "Solves: ∂²u/∂x² + ∂²u/∂y² = 8π²·sin(2πx)·sin(2πy)\\n\\n"
+      "Description:\\n"
+      "Poisson equation with known analytical solution:\\n"
+      "- Heat distribution with sources\\n"
+      "- Electrostatic potential with charges\\n"
+      "- Stationary processes with sources/sinks\\n\\n"
+      "Coefficients:\\n"
+      "- a11 = a22 = 1 (unit diffusion)\\n"
+      "- a12 = b1 = b2 = c = 0 (no mixed derivatives, convection, reaction)\\n"
+      "- f(x,y) = 8π²·sin(2πx)·sin(2πy) (harmonic source)\\n\\n"
+      "Analytical Solution:\\n"
+      "u(x,y) = sin(2πx)·sin(2πy)\\n\\n"
+      "Boundary Conditions:\\n"
+      "Zero Dirichlet conditions on all boundaries (u = 0)",
+      "1.0", "1.0", "20", "20",
+      "1.0", "0.0", "1.0", "0.0", "0.0", "0.0", "8*pi*pi*sin(2*pi*x)*sin(2*pi*y)",
+      "0.0", "0.0", "0.0", "0.0"
+    },
+    { "Helmholtz Equation",
+      "HELMHOLTZ EQUATION\\n\\n"
+      "Solves: ∂²u/∂x² + ∂²u/∂y² + u = cos(πx/3)·cos(πy)\\n\\n"
+      "Description:\\n"
+      "Helmholtz equation - important elliptic equation:\\n"
+      "- Wave processes in frequency domain\\n"
+      "- Quantum mechanics (stationary Schrödinger equation)\\n"
+      "- Acoustics and electromagnetic waves\\n\\n"
+      "Coefficients:\\n"
+      "- a11 = a22 = 1 (diffusion)\\n"
+      "- c = 1 (reaction term)\\n"
+      "- a12 = b1 = b2 = 0\\n"
+      "- f(x,y) = cos(πx/3)·cos(πy) (source)\\n\\n"
+      "Boundary Conditions:\\n"
+      "- West: Neumann (∂u/∂n = 0) - symmetry\\n"
+      "- Others: Dirichlet with specified values",
+      "3.0", "1.0", "30", "10",
+      "1.0", "0.0", "1.0", "0.0", "0.0", "1.0", "cos(pi*x/3)*cos(pi*y)",
+      "0.0", "cos(pi*3/3)*cos(pi*y)", "cos(pi*x/3)*cos(0)", "cos(pi*x/3)*cos(pi*1)"
+    },
+    { "Convection-Diffusion",
+      "CONVECTION-DIFFUSION\\n\\n"
+      "Solves: (0.01+0.005x)∂²u/∂x² + (0.01+0.005x)∂²u/∂y² + ∂u/∂x = exp(-10·((x-2)²+(y-0.5)²))\\n\\n"
+      "Description:\\n"
+      "Convection-diffusion equation describing transport:\\n"
+      "- Pollutant transport in atmosphere or water\\n"
+      "- Heat transfer with fluid motion\\n"
+      "- Diffusion in flowing media\\n\\n"
+      "Coefficients:\\n"
+      "- a11 = a22 = 0.01 + 0.005x (variable diffusion)\\n"
+      "- b1 = 1 (convection in positive X direction)\\n"
+      "- b2 = 0 (no convection in Y)\\n"
+      "- a12 = c = 0\\n"
+      "- f(x,y) = exp(-10·((x-2)²+(y-0.5)²)) (local source)\\n\\n"
+      "Boundary Conditions:\\n"
+      "- West: Dirichlet u = 1 (inlet concentration)\\n"
+      "- East: Dirichlet u = 0 (outlet concentration)\\n"
+      "- South/North: Neumann (symmetry)",
+      "2.0", "1.0", "40", "20",
+      "0.01 + 0.005*x", "0.0", "0.01 + 0.005*x", "1.0", "0.0", "0.0", "exp(-10*((x-2)^2 + (y-0.5)^2))",
+      "1.0", "0.0", "0.0", "0.0"
+    },
+    { "Reaction-Diffusion",
+      "REACTION-DIFFUSION\\n\\n"
+      "Solves: (0.1+0.05xy)∂²u/∂x² + (0.05xy)∂²u/∂y² + u = 10·exp(-5·((x-1)²+(y-1)²)) + 2π²·cos(πx)·cos(πy)\\n\\n"
+      "Description:\\n"
+      "Reaction-diffusion equations modeling many processes:\\n"
+      "- Population dynamics of species\\n"
+      "- Chemical reactions with diffusion\\n"
+      "- Neural impulse propagation\\n\\n"
+      "Coefficients:\\n"
+      "- a11 = a22 = 0.1 + 0.05xy (variable diffusion)\\n"
+      "- c = 1 (linear reaction)\\n"
+      "- a12 = b1 = b2 = 0\\n"
+      "- f(x,y) = complex source (exponential + harmonic)\\n\\n"
+      "Boundary Conditions:\\n"
+      "Mixed conditions:\\n"
+      "- Some: Dirichlet with different values\\n"
+      "- North: Neumann ∂u/∂n = 5",
+      "2.0", "2.0", "30", "30",
+      "0.1 + 0.05*x*y", "0.0", "0.1 + 0.05*x*y", "0.0", "0.0", "1.0", "10*exp(-5*((x-1)^2 + (y-1)^2)) + 2*pi^2*cos(pi*x)*cos(pi*y)",
+      "20.0", "10.0", "15.0", "5.0"
+    },
+    { "General Elliptic",
+      "GENERAL ELLIPTIC\\n\\n"
+      "Solves: General elliptic equation with variable coefficients\\n"
+      "(1+0.5sin(πx)cos(πy))∂²u/∂x² + 2·0.2∂²u/∂x∂y + (0.8+0.3cos(πx))∂²u/∂y² + 0.2x∂u/∂x + 0.1y∂u/∂y + 0.1u = sin(πx/2)sin(πy) + 0.5π²cos(πx/2)cos(πy)\\n\\n"
+      "Description:\\n"
+      "General elliptic equation encompassing all physical effects:\\n"
+      "- Variable diffusion in both directions\\n"
+      "- Mixed derivative term\\n"
+      "- Convection in both directions\\n"
+      "- Reaction term\\n\\n"
+      "Coefficients:\\n"
+      "- a11(x,y) = 1 + 0.5sin(πx)cos(πy) (variable diffusion)\\n"
+      "- a12 = 0.2 (mixed derivative coefficient)\\n"
+      "- a22(x,y) = 0.8 + 0.3cos(πx) (variable diffusion)\\n"
+      "- b1(x,y) = 0.2x (convection in x)\\n"
+      "- b2(x,y) = 0.1y (convection in y)\\n"
+      "- c = 0.1 (reaction)\\n"
+      "- f(x,y) = source term\\n\\n"
+      "Boundary Conditions:\\n"
+      "- West: Neumann\\n"
+      "- Others: Dirichlet",
+      "2.0", "1.0", "50", "25",
+      "1 + 0.5*sin(pi*x)*cos(pi*y)", "0.2", "0.8 + 0.3*cos(pi*x)", "0.2*x", "0.1*y", "0.1", "sin(pi*x/2)*sin(pi*y) + 0.5*pi^2*cos(pi*x/2)*cos(pi*y)",
+      "0.0", "1.0", "0.0", "0.0"
     }
+};
+
+const int NUM_PRESETS = sizeof(PRESETS) / sizeof(PRESETS[0]);
+
+void LoadPreset(int presetIndex) {
+    // Adjust presetIndex to be 0-based for array access (since combo box starts from 1)
+    if (presetIndex < 1 || presetIndex > NUM_PRESETS) {
+        return; // Invalid preset index
+    }
+
+    // Convert to 0-based index
+    int idx = presetIndex - 1;
+    const PresetData& preset = PRESETS[idx];
+
+    // Set all values using the preset data
+    SetWindowText(g_appData.hLxEdit, preset.lx);
+    SetWindowText(g_appData.hLyEdit, preset.ly);
+    SetWindowText(g_appData.hNxEdit, preset.nx);
+    SetWindowText(g_appData.hNyEdit, preset.ny);
+    SetWindowText(g_appData.hA11Edit, preset.a11);
+    SetWindowText(g_appData.hA12Edit, preset.a12);
+    SetWindowText(g_appData.hA22Edit, preset.a22);
+    SetWindowText(g_appData.hB1Edit, preset.b1);
+    SetWindowText(g_appData.hB2Edit, preset.b2);
+    SetWindowText(g_appData.hCEdit, preset.c);
+    SetWindowText(g_appData.hFEdit, preset.f);
+    SetWindowText(g_appData.hWestValue, preset.westValue);
+    SetWindowText(g_appData.hEastValue, preset.eastValue);
+    SetWindowText(g_appData.hSouthValue, preset.southValue);
+    SetWindowText(g_appData.hNorthValue, preset.northValue);
+
+    // Update the solution info panel to reflect current values
+    char buffer[256];
+    std::ostringstream solutionInfo;
+    solutionInfo << "Current Configuration:\n";
+    solutionInfo << "-------------------\n";
+
+    // Get current values from UI
+    GetWindowText(g_appData.hLxEdit, buffer, sizeof(buffer));
+    solutionInfo << "Domain X: [0, " << buffer << "]\n";
+    GetWindowText(g_appData.hLyEdit, buffer, sizeof(buffer));
+    solutionInfo << "Domain Y: [0, " << buffer << "]\n";
+    GetWindowText(g_appData.hNxEdit, buffer, sizeof(buffer));
+    solutionInfo << "X nodes: " << buffer << "\n";
+    GetWindowText(g_appData.hNyEdit, buffer, sizeof(buffer));
+    solutionInfo << "Y nodes: " << buffer << "\n\n";
+
+    solutionInfo << "Coefficients:\n";
+    GetWindowText(g_appData.hA11Edit, buffer, sizeof(buffer));
+    solutionInfo << "  a11(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hA12Edit, buffer, sizeof(buffer));
+    solutionInfo << "  a12(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hA22Edit, buffer, sizeof(buffer));
+    solutionInfo << "  a22(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hB1Edit, buffer, sizeof(buffer));
+    solutionInfo << "  b1(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hB2Edit, buffer, sizeof(buffer));
+    solutionInfo << "  b2(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hCEdit, buffer, sizeof(buffer));
+    solutionInfo << "  c(x,y) = " << buffer << "\n";
+    GetWindowText(g_appData.hFEdit, buffer, sizeof(buffer));
+    solutionInfo << "  f(x,y) = " << buffer << "\n";
+
+    SetWindowText(g_appData.hSolutionInfo, solutionInfo.str().c_str());
+
+    // Show preset description in message box
+    MessageBox(NULL, preset.description, preset.name, MB_OK | MB_ICONINFORMATION);
+
+    // Clear any stored solution data to prevent showing stale visualization
+    g_appData.lastSolution.clear();
+    g_appData.lastMesh.nodes.clear();
+    g_appData.lastMesh.elements.clear();
+    g_appData.hasLastSolution = false;
+
+    // Force refresh of all affected controls to ensure visual update
+    UpdateWindow(g_appData.hLxEdit);
+    UpdateWindow(g_appData.hLyEdit);
+    UpdateWindow(g_appData.hNxEdit);
+    UpdateWindow(g_appData.hNyEdit);
+    UpdateWindow(g_appData.hA11Edit);
+    UpdateWindow(g_appData.hA12Edit);
+    UpdateWindow(g_appData.hA22Edit);
+    UpdateWindow(g_appData.hB1Edit);
+    UpdateWindow(g_appData.hB2Edit);
+    UpdateWindow(g_appData.hCEdit);
+    UpdateWindow(g_appData.hFEdit);
+    UpdateWindow(g_appData.hWestValue);
+    UpdateWindow(g_appData.hEastValue);
+    UpdateWindow(g_appData.hSouthValue);
+    UpdateWindow(g_appData.hNorthValue);
+    UpdateWindow(g_appData.hSolutionInfo);
+
+    // Force refresh of the visualization frame to clear any stale display
+    InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
 }

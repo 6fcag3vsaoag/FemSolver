@@ -6,6 +6,11 @@
 #include "Visualizer.h"
 #include <iostream>
 #include <memory>
+#include <string>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 
 EllipticApp::EllipticApp()
@@ -19,7 +24,9 @@ EllipticApp::EllipticApp()
     visualizer_ = std::make_unique<Visualizer>();
     guiApp_ = std::make_unique<GUIApp>();
 
+    #ifdef _DEBUG
     std::cout << "EllipticApp initialized" << std::endl;
+    #endif
 }
 
 EllipticApp::~EllipticApp() = default;
@@ -32,8 +39,15 @@ void EllipticApp::run(bool useGUI) {
             guiApp_->initialize();
             guiApp_->run();  // Just run the GUI, the solver will be set from FemSolver
         } catch (const std::exception& e) {
+            #ifdef _DEBUG
             std::cerr << "Error running GUI: " << e.what() << std::endl;
             std::cout << "Falling back to console mode..." << std::endl;
+            #else
+            #ifdef _WIN32
+            // For Windows GUI application, show error in message box
+            MessageBox(NULL, ("Error running GUI: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+            #endif
+            #endif
             runConsoleMode();
         }
     } else {
@@ -42,7 +56,9 @@ void EllipticApp::run(bool useGUI) {
 }
 
 void EllipticApp::runConsoleMode() {
+    #ifdef _DEBUG
     std::cout << "Starting Elliptic FEM Solver Application in console mode..." << std::endl;
+    #endif
 
     // Example: Set up a simple Poisson problem
     setupPoissonProblem();
@@ -56,20 +72,32 @@ void EllipticApp::runConsoleMode() {
     // Plot the solution
     plotSolution();
 
+    #ifdef _DEBUG
     std::cout << "Application completed successfully." << std::endl;
+    #endif
 }
 
 void EllipticApp::generateMesh() {
     try {
+        #ifdef _DEBUG
         std::cout << "Generating mesh with dimensions: " << Lx_ << " x " << Ly_
                   << " and " << Nx_ << " x " << Ny_ << " nodes" << std::endl;
+        #endif
 
         currentMesh_ = std::make_unique<Mesh>(meshGenerator_->generate());
 
+        #ifdef _DEBUG
         std::cout << "Mesh generated with " << currentMesh_->nodes.size()
                   << " nodes and " << currentMesh_->elements.size() << " elements" << std::endl;
+        #endif
     } catch (const std::exception& e) {
+        #ifdef _DEBUG
         std::cerr << "Error generating mesh: " << e.what() << std::endl;
+        #else
+        #ifdef _WIN32
+        MessageBox(NULL, ("Error generating mesh: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+        #endif
+        #endif
         throw;
     }
 }
@@ -80,7 +108,9 @@ void EllipticApp::solveProblem() {
             throw std::runtime_error("No mesh available. Generate mesh first.");
         }
 
+        #ifdef _DEBUG
         std::cout << "Solving problem..." << std::endl;
+        #endif
 
         // Update the solver with current coefficient functions
         femSolver_ = std::make_unique<EllipticFEMSolver>(
@@ -91,10 +121,18 @@ void EllipticApp::solveProblem() {
         // Solve the problem
         currentSolution_ = femSolver_->solve(*currentMesh_, boundaryConditions_);
 
+        #ifdef _DEBUG
         std::cout << "Problem solved. Solution computed for "
                   << currentSolution_.size() << " nodes." << std::endl;
+        #endif
     } catch (const std::exception& e) {
+        #ifdef _DEBUG
         std::cerr << "Error solving problem: " << e.what() << std::endl;
+        #else
+        #ifdef _WIN32
+        MessageBox(NULL, ("Error solving problem: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+        #endif
+        #endif
         throw;
     }
 }
@@ -109,7 +147,9 @@ void EllipticApp::plotSolution() {
             throw std::runtime_error("No mesh available for plotting.");
         }
 
+        #ifdef _DEBUG
         std::cout << "Plotting solution..." << std::endl;
+        #endif
 
         // Plot the solution
         visualizer_->plotSolution(*currentMesh_, currentSolution_, "FEM Solution");
@@ -117,7 +157,13 @@ void EllipticApp::plotSolution() {
         // Export the plot data
         exportResults();
     } catch (const std::exception& e) {
+        #ifdef _DEBUG
         std::cerr << "Error plotting solution: " << e.what() << std::endl;
+        #else
+        #ifdef _WIN32
+        MessageBox(NULL, ("Error plotting solution: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+        #endif
+        #endif
         throw;
     }
 }
@@ -147,7 +193,13 @@ void EllipticApp::exportResults() {
             );
         }
     } catch (const std::exception& e) {
+        #ifdef _DEBUG
         std::cerr << "Error exporting results: " << e.what() << std::endl;
+        #else
+        #ifdef _WIN32
+        MessageBox(NULL, ("Error exporting results: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+        #endif
+        #endif
         throw;
     }
 }
@@ -172,7 +224,9 @@ void EllipticApp::resetProblem() {
     // Reset boundary conditions
     boundaryConditions_.clear();
 
+    #ifdef _DEBUG
     std::cout << "Problem reset to default values." << std::endl;
+    #endif
 }
 
 void EllipticApp::setCoefficientFunctions(
@@ -438,10 +492,18 @@ void EllipticApp::solveWithParameters(
         // Solve the problem
         solveProblem();
 
+        #ifdef _DEBUG
         std::cout << "Problem solved successfully with GUI parameters." << std::endl;
+        #endif
 
     } catch (const std::exception& e) {
+        #ifdef _DEBUG
         std::cerr << "Error solving with parameters: " << e.what() << std::endl;
+        #else
+        #ifdef _WIN32
+        MessageBox(NULL, ("Error solving with parameters: " + std::string(e.what())).c_str(), "Error", MB_OK | MB_ICONERROR);
+        #endif
+        #endif
         throw;
     }
 }
