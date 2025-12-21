@@ -429,37 +429,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                 Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
 
                                 // Draw solution as a color gradient if we have data
-                                // Use precomputed min/max values if available, otherwise compute efficiently
+                                // Compute min/max values for proper normalization
                                 if (solution.size() >= 4) {
-                                    // For performance, we'll use a simpler approach - just show a basic visualization
-                                    // instead of computing min/max every time
+                                    // Find min and max values in the solution for proper scaling
+                                    double minVal = *std::min_element(solution.begin(), solution.end());
+                                    double maxVal = *std::max_element(solution.begin(), solution.end());
+                                    double range = (maxVal == minVal) ? 1.0 : (maxVal - minVal);
 
                                     // Use a simplified grid view based on the mesh
-                                    int gridX = (g_appData.Nx < 30) ? g_appData.Nx : 30;  // Lower grid limit for performance
-                                    int gridY = (g_appData.Ny < 30) ? g_appData.Ny : 30;
+                                    int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for better visualization
+                                    int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
 
                                     int cellWidth = visChartWidth / gridX;
                                     int cellHeight = visChartHeight / gridY;
 
                                     if (cellWidth >= 1 && cellHeight >= 1) {
-                                        // Only visualize a sample of the solution for performance
+                                        // Visualize all solution points (without sampling to show more detail)
                                         int xStep = std::max(1, g_appData.Nx / gridX);
                                         int yStep = std::max(1, g_appData.Ny / gridY);
 
-                                        for (int y = 0; y < gridY && y < g_appData.Ny; y += yStep) {
-                                            for (int x = 0; x < gridX && x < g_appData.Nx; x += xStep) {
+                                        for (int y = 0; y < g_appData.Ny && y < gridY; y += yStep) {
+                                            for (int x = 0; x < g_appData.Nx && x < gridX; x += xStep) {
                                                 int idx = y * g_appData.Nx + x;
                                                 if (idx >= 0 && idx < static_cast<int>(solution.size())) {
-                                                    // Use a simple approach: just pick a representative value
-                                                    // instead of computing min/max every time
                                                     double val = solution[idx];
-                                                    // Normalize to 0-1 range using a reasonable range for visualization
-                                                    double normVal = std::max(0.0, std::min(1.0, (val + 10.0) / 20.0)); // Assuming values typically in range [-10,10]
+                                                    // Normalize using actual min/max values for better visualization
+                                                    double normVal = (range != 0) ? (val - minVal) / range : 0.0;
 
-                                                    // Create color based on solution value (blue=low, red=high)
+                                                    // Create color based on solution value (blue=low, red=high, green=medium)
                                                     int r = static_cast<int>(normVal * 255);
                                                     int b = static_cast<int>((1.0 - normVal) * 255);
-                                                    int g = 50; // Keep some green
+                                                    int g = static_cast<int>(normVal * 128); // Green channel for intermediate values
 
                                                     HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
                                                     RECT cellRect;
@@ -476,7 +476,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                         }
                                     }
 
-                                    // Draw legend
+                                    // Draw legend with actual min/max values
                                     int legendX = visChartLeft + visChartWidth + 5;
                                     int legendY = visChartTop;
                                     int legendHeight = 100;
@@ -488,7 +488,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                             double ratio = static_cast<double>(i) / legendHeight;
                                             int r = static_cast<int>(ratio * 255);
                                             int b = static_cast<int>((1.0 - ratio) * 255);
-                                            int g = 50;
+                                            int g = static_cast<int>(ratio * 128);
 
                                             HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
                                             RECT legendRect;
@@ -500,11 +500,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                                             DeleteObject(legendBrush);
                                         }
 
-                                        // Draw legend labels
-                                        std::string lowLabel = "Low";
-                                        std::string highLabel = "High";
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.c_str(), static_cast<int>(lowLabel.length()));
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.c_str(), static_cast<int>(highLabel.length()));
+                                        // Draw legend labels with actual min/max values
+                                        std::ostringstream lowLabel;
+                                        lowLabel << std::fixed << std::setprecision(2) << minVal;
+                                        std::ostringstream highLabel;
+                                        highLabel << std::fixed << std::setprecision(2) << maxVal;
+
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
+                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
                                     }
                                 }
                             }
@@ -1357,23 +1360,24 @@ void LoadPreset(int presetIndex) {
     g_appData.lastMesh.elements.clear();
     g_appData.hasLastSolution = false;
 
-    // Force refresh of all affected controls to ensure visual update
-    UpdateWindow(g_appData.hLxEdit);
-    UpdateWindow(g_appData.hLyEdit);
-    UpdateWindow(g_appData.hNxEdit);
-    UpdateWindow(g_appData.hNyEdit);
-    UpdateWindow(g_appData.hA11Edit);
-    UpdateWindow(g_appData.hA12Edit);
-    UpdateWindow(g_appData.hA22Edit);
-    UpdateWindow(g_appData.hB1Edit);
-    UpdateWindow(g_appData.hB2Edit);
-    UpdateWindow(g_appData.hCEdit);
-    UpdateWindow(g_appData.hFEdit);
-    UpdateWindow(g_appData.hWestValue);
-    UpdateWindow(g_appData.hEastValue);
-    UpdateWindow(g_appData.hSouthValue);
-    UpdateWindow(g_appData.hNorthValue);
-    UpdateWindow(g_appData.hSolutionInfo);
+    // Force immediate update of all affected controls to ensure visual update
+    // Use both SetWindowPos with SWP_FRAMECHANGED and RedrawWindow to ensure update
+    RedrawWindow(g_appData.hLxEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hLyEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hNxEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hNyEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hA11Edit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hA12Edit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hA22Edit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hB1Edit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hB2Edit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hCEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hFEdit, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hWestValue, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hEastValue, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hSouthValue, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hNorthValue, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    RedrawWindow(g_appData.hSolutionInfo, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 
     // Force refresh of the visualization frame to clear any stale display
     InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
