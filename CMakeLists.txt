@@ -51,6 +51,7 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET FemSolver PROPERTY CXX_STANDARD 17)
 endif()
 
+
 # Set Windows subsystem to prevent console window from appearing
 if (WIN32)
   if(MSVC)

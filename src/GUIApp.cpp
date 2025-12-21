@@ -3,6 +3,7 @@
 #include "EllipticApp.h"
 #include <iostream>
 #include <stdexcept>
+#include <clocale>
 #define NOMINMAX  // Prevent windows.h from defining min/max macros
 #include <windows.h>
 #include <commctrl.h>
@@ -63,6 +64,147 @@ struct AppData {
     bool hasLastSolution = false;
 };
 
+// Language enum
+enum class Language {
+    English,
+    Russian
+};
+
+// Interface for language strategy
+class ILanguageStrategy {
+public:
+    virtual ~ILanguageStrategy() = default;
+    virtual const char* getEquationPreset() const = 0;
+    virtual const char* getSolveBtn() const = 0;
+    virtual const char* getResetBtn() const = 0;
+    virtual const char* getExportBtn() const = 0;
+    virtual const char* getHelpBtn() const = 0;
+    virtual const char* getCoeffGroup() const = 0;
+    virtual const char* getBcGroup() const = 0;
+    virtual const char* getSolInfoGroup() const = 0;
+    virtual const char* getPresetOption(int index) const = 0;
+    virtual const char* getBcType(int index) const = 0;
+    virtual const char* getStatusReady() const = 0;
+    virtual const char* getStatusPresetLoaded() const = 0;
+    virtual const char* getStatusSolved() const = 0;
+    virtual const char* getHelpText() const = 0;
+    virtual Language getLanguageType() const = 0;
+};
+
+// English language strategy
+class EnglishLanguageStrategy : public ILanguageStrategy {
+public:
+    const char* getEquationPreset() const override { return "Equation Preset:"; }
+    const char* getSolveBtn() const override { return "Solve"; }
+    const char* getResetBtn() const override { return "Reset"; }
+    const char* getExportBtn() const override { return "Export"; }
+    const char* getHelpBtn() const override { return "Help"; }
+    const char* getCoeffGroup() const override { return "Equation Coefficients"; }
+    const char* getBcGroup() const override { return "Boundary Conditions"; }
+    const char* getSolInfoGroup() const override { return "Solution Information"; }
+    const char* getPresetOption(int index) const override {
+        static const char* options[] = {
+            "Select Preset...", "Laplace Equation", "Poisson Equation",
+            "Helmholtz Equation", "Convection-Diffusion", "Reaction-Diffusion", "General Elliptic"
+        };
+        return (index >= 0 && index < 7) ? options[index] : "";
+    }
+    const char* getBcType(int index) const override {
+        static const char* types[] = { "Dirichlet", "Neumann" };
+        return (index >= 0 && index < 2) ? types[index] : "";
+    }
+    const char* getStatusReady() const override { return "Ready - Select an equation preset to begin"; }
+    const char* getStatusPresetLoaded() const override { return "Preset loaded. Ready to solve."; }
+    const char* getStatusSolved() const override { return "Solution computed successfully!"; }
+    const char* getHelpText() const override {
+        return "FEM Solver Help:\n\n"
+               "1. Select an equation preset from the dropdown\n"
+               "2. Adjust mesh parameters (Lx, Ly, Nx, Ny)\n"
+               "3. Modify equation coefficients if needed\n"
+               "4. Set boundary conditions for each side\n"
+               "5. Click 'Solve' to compute the solution\n"
+               "6. Use 'Export' to save results\n\n"
+               "Coefficients:\n"
+               "a11, a22: diffusion coefficients\n"
+               "a12: mixed derivative coefficient\n"
+               "b1, b2: convection coefficients\n"
+               "c: reaction coefficient\n"
+               "f: source term";
+    }
+    Language getLanguageType() const override { return Language::English; }
+};
+
+// Russian language strategy
+class RussianLanguageStrategy : public ILanguageStrategy {
+public:
+    const char* getEquationPreset() const override { return "Предустановка уравнения:"; }
+    const char* getSolveBtn() const override { return "Решить"; }
+    const char* getResetBtn() const override { return "Сброс"; }
+    const char* getExportBtn() const override { return "Экспорт"; }
+    const char* getHelpBtn() const override { return "Справка"; }
+    const char* getCoeffGroup() const override { return "Коэффициенты уравнения"; }
+    const char* getBcGroup() const override { return "Граничные условия"; }
+    const char* getSolInfoGroup() const override { return "Информация о решении"; }
+    const char* getPresetOption(int index) const override {
+        static const char* options[] = {
+            "Выберите предустановку...", "Уравнение Лапласа", "Уравнение Пуассона",
+            "Уравнение Гельмгольца", "Конвективно-диффузионное", "Реакционно-диффузионное", "Общее эллиптическое"
+        };
+        return (index >= 0 && index < 7) ? options[index] : "";
+    }
+    const char* getBcType(int index) const override {
+        static const char* types[] = { "Дирихле", "Нейман" };
+        return (index >= 0 && index < 2) ? types[index] : "";
+    }
+    const char* getStatusReady() const override { return "Готово - Выберите предустановку уравнения для начала"; }
+    const char* getStatusPresetLoaded() const override { return "Предустановка загружена. Готов к решению."; }
+    const char* getStatusSolved() const override { return "Решение вычислено успешно!"; }
+    const char* getHelpText() const override {
+        return "Справка FEM Solver:\n\n"
+               "1. Выберите предустановку уравнения из выпадающего списка\n"
+               "2. Настройте параметры сетки (Lx, Ly, Nx, Ny)\n"
+               "3. Измените коэффициенты уравнения при необходимости\n"
+               "4. Установите граничные условия для каждой стороны\n"
+               "5. Нажмите 'Решить' для вычисления решения\n"
+               "6. Используйте 'Экспорт' для сохранения результатов\n\n"
+               "Коэффициенты:\n"
+               "a11, a22: коэффициенты диффузии\n"
+               "a12: коэффициент смешанной производной\n"
+               "b1, b2: коэффициенты конвекции\n"
+               "c: коэффициент реакции\n"
+               "f: источник";
+    }
+    Language getLanguageType() const override { return Language::Russian; }
+};
+
+// Context for language strategy
+class LanguageContext {
+private:
+    ILanguageStrategy* strategy;
+public:
+    LanguageContext(ILanguageStrategy* s) : strategy(s) {}
+    void setStrategy(ILanguageStrategy* s) { strategy = s; }
+    const char* getEquationPreset() const { return strategy->getEquationPreset(); }
+    const char* getSolveBtn() const { return strategy->getSolveBtn(); }
+    const char* getResetBtn() const { return strategy->getResetBtn(); }
+    const char* getExportBtn() const { return strategy->getExportBtn(); }
+    const char* getHelpBtn() const { return strategy->getHelpBtn(); }
+    const char* getCoeffGroup() const { return strategy->getCoeffGroup(); }
+    const char* getBcGroup() const { return strategy->getBcGroup(); }
+    const char* getSolInfoGroup() const { return strategy->getSolInfoGroup(); }
+    const char* getPresetOption(int index) const { return strategy->getPresetOption(index); }
+    const char* getBcType(int index) const { return strategy->getBcType(index); }
+    const char* getStatusReady() const { return strategy->getStatusReady(); }
+    const char* getStatusPresetLoaded() const { return strategy->getStatusPresetLoaded(); }
+    const char* getStatusSolved() const { return strategy->getStatusSolved(); }
+    const char* getHelpText() const { return strategy->getHelpText(); }
+    Language getLanguageType() const { return strategy->getLanguageType(); }
+};
+
+// Global language context using strategy pattern
+EnglishLanguageStrategy englishStrategy;
+LanguageContext langContext(&englishStrategy);
+
 AppData g_appData;
 
 // Function declarations
@@ -73,6 +215,8 @@ void OnResetButtonClicked(HWND hwnd);
 void OnExportButtonClicked(HWND hwnd);
 void OnPresetChanged(HWND hwnd, int presetIndex);
 void LoadPreset(int presetIndex);
+void SwitchLanguage();
+void UpdateLanguageStrings(HWND hwnd);
 
 GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
     // Initialize common controls
@@ -110,6 +254,9 @@ GUIApp::~GUIApp() {
 }
 
 void GUIApp::initialize() {
+    // Set the locale to support Cyrillic characters
+    setlocale(LC_ALL, "Russian");
+
     // Register window class
     WNDCLASSEX wc;
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -135,7 +282,7 @@ void GUIApp::run() {
     HWND hwnd = CreateWindowEx(
         WS_EX_CLIENTEDGE,
         g_szClassName,
-        "Finite Element Method Solver - Elliptic Equations",
+        "Finite Element Method Solver - Elliptic Equations", // Default title, will be updated after creation
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 1100, 750,  // More reasonable initial size with proper aspect ratio
         NULL, NULL, GetModuleHandle(NULL), NULL
@@ -186,20 +333,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     break;
                 case 1004: // Help button
                     MessageBox(hwnd,
-                        "FEM Solver Help:\n\n"
-                        "1. Select an equation preset from the dropdown\n"
-                        "2. Adjust mesh parameters (Lx, Ly, Nx, Ny)\n"
-                        "3. Modify equation coefficients if needed\n"
-                        "4. Set boundary conditions for each side\n"
-                        "5. Click 'Solve' to compute the solution\n"
-                        "6. Use 'Export' to save results\n\n"
-                        "Coefficients:\n"
-                        "a11, a22: diffusion coefficients\n"
-                        "a12: mixed derivative coefficient\n"
-                        "b1, b2: convection coefficients\n"
-                        "c: reaction coefficient\n"
-                        "f: source term",
+                        langContext.getHelpText(),
                         "Help", MB_OK | MB_ICONINFORMATION);
+                    break;
+                case 1005: // Language toggle button
+                    SwitchLanguage();
+                    UpdateLanguageStrings(hwnd);
                     break;
                 case 2000: // Preset combo box
                     if (HIWORD(wParam) == CBN_SELCHANGE) {
@@ -260,20 +399,83 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     MoveWindow(g_appData.hPresetLabel, leftStart, 10, presetLabelWidth, 25, TRUE);
                 }
 
-                // Resize the buttons
+                // Resize the buttons - use dynamic width calculation based on text length
                 int buttonY = 45;
-                int buttonWidth = static_cast<int>(leftWidth * 0.18); // About 18% of the left panel width
-                int buttonSpacing = static_cast<int>(leftWidth * 0.02); // 2% of width spacing
+                int buttonHeight = 30;
+                int buttonSpacing = 2; // Fixed 2px spacing
+                int totalButtons = 5;
+                int buttonMargin = 10; // Left and right margin for buttons
+
+                // Calculate individual button widths based on text length to prevent overlapping
+                HDC hdc = GetDC(hwnd);
+                HFONT hFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+                HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
+
+                // Measure text widths for each button in the current language
+                SIZE textSize;
+                int solveWidth = 60; // Default width
+                int resetWidth = 60;
+                int exportWidth = 60;
+                int helpWidth = 60;
+                int langWidth = 60;
+
+                // Calculate text width for Solve button
+                GetTextExtentPoint32A(hdc, langContext.getSolveBtn(), strlen(langContext.getSolveBtn()), &textSize);
+                solveWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+                // Calculate text width for Reset button
+                GetTextExtentPoint32A(hdc, langContext.getResetBtn(), strlen(langContext.getResetBtn()), &textSize);
+                resetWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+                // Calculate text width for Export button
+                GetTextExtentPoint32A(hdc, langContext.getExportBtn(), strlen(langContext.getExportBtn()), &textSize);
+                exportWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+                // Calculate text width for Help button
+                GetTextExtentPoint32A(hdc, langContext.getHelpBtn(), strlen(langContext.getHelpBtn()), &textSize);
+                helpWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+                // Calculate text width for Language Toggle button
+                GetTextExtentPoint32A(hdc, (langContext.getLanguageType() == Language::English) ? "RU" : "EN",
+                                      strlen((langContext.getLanguageType() == Language::English) ? "RU" : "EN"), &textSize);
+                langWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+                SelectObject(hdc, hOldFont);
+                ReleaseDC(hwnd, hdc);
+
+                // Calculate total required width
+                int totalRequiredWidth = solveWidth + resetWidth + exportWidth + helpWidth + langWidth
+                                       + (buttonSpacing * (totalButtons - 1)) + (buttonMargin * 2);
+
+                // If total required width exceeds available space, scale down proportionally
+                if (totalRequiredWidth > leftWidth) {
+                    double scale = (double)(leftWidth - (buttonMargin * 2) - (buttonSpacing * (totalButtons - 1))) /
+                                  (double)(solveWidth + resetWidth + exportWidth + helpWidth + langWidth);
+                    solveWidth = (int)(solveWidth * scale);
+                    resetWidth = (int)(resetWidth * scale);
+                    exportWidth = (int)(exportWidth * scale);
+                    helpWidth = (int)(helpWidth * scale);
+                    langWidth = (int)(langWidth * scale);
+                }
+
+                // Position buttons with calculated widths
+                int currentX = leftStart + buttonMargin;
 
                 HWND hSolveBtn = GetDlgItem(hwnd, 1001);
                 HWND hResetBtn = GetDlgItem(hwnd, 1002);
                 HWND hExportBtn = GetDlgItem(hwnd, 1003);
                 HWND hHelpBtn = GetDlgItem(hwnd, 1004);
+                HWND hLangBtn = GetDlgItem(hwnd, 1005);
 
-                if (hSolveBtn) MoveWindow(hSolveBtn, leftStart, buttonY, buttonWidth, 30, TRUE);
-                if (hResetBtn) MoveWindow(hResetBtn, leftStart + buttonWidth + buttonSpacing, buttonY, buttonWidth, 30, TRUE);
-                if (hExportBtn) MoveWindow(hExportBtn, leftStart + (buttonWidth + buttonSpacing) * 2, buttonY, buttonWidth, 30, TRUE);
-                if (hHelpBtn) MoveWindow(hHelpBtn, leftStart + (buttonWidth + buttonSpacing) * 3, buttonY, buttonWidth, 30, TRUE);
+                if (hSolveBtn) MoveWindow(hSolveBtn, currentX, buttonY, solveWidth, buttonHeight, TRUE);
+                currentX += solveWidth + buttonSpacing;
+                if (hResetBtn) MoveWindow(hResetBtn, currentX, buttonY, resetWidth, buttonHeight, TRUE);
+                currentX += resetWidth + buttonSpacing;
+                if (hExportBtn) MoveWindow(hExportBtn, currentX, buttonY, exportWidth, buttonHeight, TRUE);
+                currentX += exportWidth + buttonSpacing;
+                if (hHelpBtn) MoveWindow(hHelpBtn, currentX, buttonY, helpWidth, buttonHeight, TRUE);
+                currentX += helpWidth + buttonSpacing;
+                if (hLangBtn) MoveWindow(hLangBtn, currentX, buttonY, langWidth, buttonHeight, TRUE);
 
                 // Calculate positions for group boxes with proper spacing
                 int coeffY = 110;  // Fixed position to match CreateControls
@@ -551,40 +753,107 @@ void CreateControls(HWND hwnd) {
 
     // Top section: Preset selection
     int presetLabelWidth = static_cast<int>(leftWidth * 0.28); // About 28% of the left panel width
-    g_appData.hPresetLabel = CreateWindow("Static", "Equation Preset:", WS_VISIBLE | WS_CHILD, leftStart, 10, presetLabelWidth, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
+    g_appData.hPresetLabel = CreateWindow("Static", langContext.getEquationPreset(), WS_VISIBLE | WS_CHILD, leftStart, 10, presetLabelWidth, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hPresetCombo = CreateWindow("ComboBox", "",
                                           WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                                           leftStart + presetLabelWidth, 8, leftWidth - presetLabelWidth - 10, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
 
-    // Add preset options
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Select Preset...");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Laplace Equation");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Poisson Equation");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Helmholtz Equation");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Convection-Diffusion");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"Reaction-Diffusion");
-    SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)"General Elliptic");
+    // Add preset options based on current language
+    for (int i = 0; i < 7; i++) {
+        SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)langContext.getPresetOption(i));
+    }
     SendMessage(g_appData.hPresetCombo, CB_SETCURSEL, 0, 0); // Set default selection
 
-    // Second section: Buttons (Solve, Reset, Export, Help)
+    // Second section: Buttons (Solve, Reset, Export, Help, Language Toggle) - properly aligned layout
     int buttonY = 45;
+    int buttonHeight = 30;
+    int buttonSpacing = 2; // Fixed 2px spacing between buttons as requested
+    int totalButtons = 5;
+    int buttonMargin = 10; // Left and right margin for buttons (different from panel margin)
 
-    // Calculate responsive button width and spacing
-    int buttonWidth = static_cast<int>(leftWidth * 0.18); // About 18% of the left panel width
-    int buttonSpacing = static_cast<int>(leftWidth * 0.02); // 2% of width spacing
+    // Calculate individual button widths based on text length to prevent overlapping
+    HDC hdc = GetDC(hwnd);
+    HFONT hFont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+    HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
 
-    CreateWindow("Button", "Solve", WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                 leftStart, buttonY, buttonWidth, 30, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Reset", WS_VISIBLE | WS_CHILD,
-                 leftStart + buttonWidth + buttonSpacing, buttonY, buttonWidth, 30, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Export", WS_VISIBLE | WS_CHILD,
-                 leftStart + (buttonWidth + buttonSpacing) * 2, buttonY, buttonWidth, 30, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
-    CreateWindow("Button", "Help", WS_VISIBLE | WS_CHILD,
-                 leftStart + (buttonWidth + buttonSpacing) * 3, buttonY, buttonWidth, 30, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
+    // Measure text widths for each button in the current language
+    SIZE textSize;
+    int solveWidth = 60; // Default width
+    int resetWidth = 60;
+    int exportWidth = 60;
+    int helpWidth = 60;
+    int langWidth = 60;
 
-    // Third section: Equation coefficients (in group box) - more compact size
-    int coeffY = 110;  // Moved down to create more space from buttons
-    g_appData.hCoeffGroup = CreateWindow("Button", "Equation Coefficients",
+    // Calculate text width for Solve button
+    GetTextExtentPoint32A(hdc, langContext.getSolveBtn(), strlen(langContext.getSolveBtn()), &textSize);
+    solveWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+    // Calculate text width for Reset button
+    GetTextExtentPoint32A(hdc, langContext.getResetBtn(), strlen(langContext.getResetBtn()), &textSize);
+    resetWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+    // Calculate text width for Export button
+    GetTextExtentPoint32A(hdc, langContext.getExportBtn(), strlen(langContext.getExportBtn()), &textSize);
+    exportWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+    // Calculate text width for Help button
+    GetTextExtentPoint32A(hdc, langContext.getHelpBtn(), strlen(langContext.getHelpBtn()), &textSize);
+    helpWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+    // Calculate text width for Language Toggle button
+    GetTextExtentPoint32A(hdc, (langContext.getLanguageType() == Language::English) ? "RU" : "EN",
+                          strlen((langContext.getLanguageType() == Language::English) ? "RU" : "EN"), &textSize);
+    langWidth = std::max<int>(50, textSize.cx + 16); // Add padding
+
+    SelectObject(hdc, hOldFont);
+    ReleaseDC(hwnd, hdc);
+
+    // Calculate total required width
+    int totalRequiredWidth = solveWidth + resetWidth + exportWidth + helpWidth + langWidth
+                           + (buttonSpacing * (totalButtons - 1)) + (buttonMargin * 2);
+
+    // If total required width exceeds available space, scale down proportionally
+    if (totalRequiredWidth > leftWidth) {
+        double scale = (double)(leftWidth - (buttonMargin * 2) - (buttonSpacing * (totalButtons - 1))) /
+                      (double)(solveWidth + resetWidth + exportWidth + helpWidth + langWidth);
+        solveWidth = (int)(solveWidth * scale);
+        resetWidth = (int)(resetWidth * scale);
+        exportWidth = (int)(exportWidth * scale);
+        helpWidth = (int)(helpWidth * scale);
+        langWidth = (int)(langWidth * scale);
+    }
+
+    // Position buttons with calculated widths
+    int currentX = leftStart + buttonMargin;
+
+    // Create Solve button
+    CreateWindow("Button", langContext.getSolveBtn(), WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                 currentX, buttonY, solveWidth, buttonHeight, hwnd, (HMENU)1001, GetModuleHandle(NULL), NULL);
+
+    // Create Reset button
+    currentX += solveWidth + buttonSpacing;
+    CreateWindow("Button", langContext.getResetBtn(), WS_VISIBLE | WS_CHILD,
+                 currentX, buttonY, resetWidth, buttonHeight, hwnd, (HMENU)1002, GetModuleHandle(NULL), NULL);
+
+    // Create Export button
+    currentX += resetWidth + buttonSpacing;
+    CreateWindow("Button", langContext.getExportBtn(), WS_VISIBLE | WS_CHILD,
+                 currentX, buttonY, exportWidth, buttonHeight, hwnd, (HMENU)1003, GetModuleHandle(NULL), NULL);
+
+    // Create Help button
+    currentX += exportWidth + buttonSpacing;
+    CreateWindow("Button", langContext.getHelpBtn(), WS_VISIBLE | WS_CHILD,
+                 currentX, buttonY, helpWidth, buttonHeight, hwnd, (HMENU)1004, GetModuleHandle(NULL), NULL);
+
+    // Create Language Toggle button
+    currentX += helpWidth + buttonSpacing;
+    CreateWindow("Button", (langContext.getLanguageType() == Language::English) ? "RU" : "EN",
+                 WS_VISIBLE | WS_CHILD,
+                 currentX, buttonY, langWidth, buttonHeight, hwnd, (HMENU)1005, GetModuleHandle(NULL), NULL);
+
+    // Third section: Equation coefficients (in group box) - with proper spacing
+    int coeffY = buttonY + buttonHeight + 10;  // Position just below the buttons with appropriate spacing
+    g_appData.hCoeffGroup = CreateWindow("Button", langContext.getCoeffGroup(),
                                     WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                     leftStart, coeffY, leftWidth - 10, 200, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
@@ -630,7 +899,7 @@ void CreateControls(HWND hwnd) {
 
     // Fourth section: Boundary conditions (in group box)
     int bcY = coeffY + 210;
-    g_appData.hBCGroup = CreateWindow("Button", "Boundary Conditions",
+    g_appData.hBCGroup = CreateWindow("Button", langContext.getBcGroup(),
                                  WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                  leftStart, bcY, leftWidth - 10, 160, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
@@ -646,8 +915,8 @@ void CreateControls(HWND hwnd) {
     g_appData.hWestBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                                 leftStart + 10 + bcLabelWidth, bcStartY-2, bcComboWidth, 60, hwnd, (HMENU)2001, GetModuleHandle(NULL), NULL);
-    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(0)); // Dirichlet
+    SendMessage(g_appData.hWestBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(1)); // Neumann
     SendMessage(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
     // Calculate available space for West value field to prevent overflow
     int westValueWidth = eastStartX - (leftStart + 10 + bcLabelWidth + bcComboWidth + 10) - 5;
@@ -657,8 +926,8 @@ void CreateControls(HWND hwnd) {
     g_appData.hEastBC = CreateWindow("ComboBox", "",
                                 WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                                 eastStartX + bcLabelWidth, bcStartY-2, bcComboWidth, 60, hwnd, (HMENU)2002, GetModuleHandle(NULL), NULL);
-    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(0)); // Dirichlet
+    SendMessage(g_appData.hEastBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(1)); // Neumann
     SendMessage(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
     // Calculate available space for East value field to prevent overflow
     int eastValueWidth = leftWidth - 15 - (eastStartX + bcLabelWidth + bcComboWidth + 5);
@@ -668,8 +937,8 @@ void CreateControls(HWND hwnd) {
     g_appData.hSouthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                                  leftStart + 10 + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, hwnd, (HMENU)2003, GetModuleHandle(NULL), NULL);
-    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(0)); // Dirichlet
+    SendMessage(g_appData.hSouthBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(1)); // Neumann
     SendMessage(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
     g_appData.hSouthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, leftStart + 10 + bcLabelWidth + bcComboWidth + 10, bcStartY + 33, westValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
@@ -677,8 +946,8 @@ void CreateControls(HWND hwnd) {
     g_appData.hNorthBC = CreateWindow("ComboBox", "",
                                  WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
                                  eastStartX + bcLabelWidth, bcStartY + 33, bcComboWidth, 60, hwnd, (HMENU)2004, GetModuleHandle(NULL), NULL);
-    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Dirichlet");
-    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)"Neumann");
+    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(0)); // Dirichlet
+    SendMessage(g_appData.hNorthBC, CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(1)); // Neumann
     SendMessage(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
     g_appData.hNorthValue = CreateWindow("Edit", "0.0", WS_VISIBLE | WS_CHILD | WS_BORDER, eastStartX + bcLabelWidth + bcComboWidth + 5, bcStartY + 33, eastValueWidth, 22, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
@@ -687,7 +956,7 @@ void CreateControls(HWND hwnd) {
     int solInfoY = bcY + bcSectionHeight + 10; // Position right after boundary conditions
     int solInfoHeight = height - solInfoY - 50; // Extend to above status bar (leaving space for status bar)
 
-    g_appData.hSolInfoGroup = CreateWindow("Button", "Solution Information",
+    g_appData.hSolInfoGroup = CreateWindow("Button", langContext.getSolInfoGroup(),
                                            WS_VISIBLE | WS_CHILD | BS_GROUPBOX,
                                            leftStart, solInfoY, leftWidth - 10, solInfoHeight, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
@@ -702,7 +971,7 @@ void CreateControls(HWND hwnd) {
                                          rightStart, 10, rightWidth - 20, height - 60, hwnd, NULL, GetModuleHandle(NULL), NULL);
 
     // Status bar at the bottom - adjusted for the solution info panel
-    g_appData.hStatus = CreateWindow("Static", "Ready - Select an equation preset to begin",
+    g_appData.hStatus = CreateWindow("Static", langContext.getStatusReady(),
                                     WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
                                     10, height - 40, width - 20, 30, hwnd, NULL, GetModuleHandle(NULL), NULL);
 }
@@ -1109,7 +1378,7 @@ void OnExportButtonClicked(HWND hwnd) {
 void OnPresetChanged(HWND hwnd, int presetIndex) {
     if (presetIndex > 0) { // Skip the "Select Preset..." option
         LoadPreset(presetIndex);
-        SetWindowText(g_appData.hStatus, "Preset loaded. Ready to solve.");
+        SetWindowText(g_appData.hStatus, langContext.getStatusPresetLoaded());
 
         // Update the solution info panel to show current values
         char buffer[256];
@@ -1145,8 +1414,27 @@ void OnPresetChanged(HWND hwnd, int presetIndex) {
 
         SetWindowText(g_appData.hSolutionInfo, solutionInfo.str().c_str());
 
+        // Force refresh of all coefficient controls to ensure visual update
+        UpdateWindow(g_appData.hLxEdit);
+        UpdateWindow(g_appData.hLyEdit);
+        UpdateWindow(g_appData.hNxEdit);
+        UpdateWindow(g_appData.hNyEdit);
+        UpdateWindow(g_appData.hA11Edit);
+        UpdateWindow(g_appData.hA12Edit);
+        UpdateWindow(g_appData.hA22Edit);
+        UpdateWindow(g_appData.hB1Edit);
+        UpdateWindow(g_appData.hB2Edit);
+        UpdateWindow(g_appData.hCEdit);
+        UpdateWindow(g_appData.hFEdit);
+        UpdateWindow(g_appData.hWestValue);
+        UpdateWindow(g_appData.hEastValue);
+        UpdateWindow(g_appData.hSouthValue);
+        UpdateWindow(g_appData.hNorthValue);
+        UpdateWindow(g_appData.hSolutionInfo);
+
         // Force a refresh of the visualization area to show the new state
         InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
+        UpdateWindow(g_appData.hVisualFrame);
     }
 }
 
@@ -1289,6 +1577,97 @@ const PresetData PRESETS[] = {
 };
 
 const int NUM_PRESETS = sizeof(PRESETS) / sizeof(PRESETS[0]);
+
+// Function to switch between languages using strategy pattern
+void SwitchLanguage() {
+    static EnglishLanguageStrategy englishStrategy;
+    static RussianLanguageStrategy russianStrategy;
+
+    if (langContext.getLanguageType() == Language::English) {
+        langContext.setStrategy(&russianStrategy);
+    } else {
+        langContext.setStrategy(&englishStrategy);
+    }
+}
+
+// Function to update all UI elements with current language strings
+void UpdateLanguageStrings(HWND hwnd) {
+    // Update window title
+    SetWindowText(hwnd, (langContext.getLanguageType() == Language::English) ?
+        "Finite Element Method Solver - Elliptic Equations" :
+        "Решатель методом конечных элементов - Эллиптические уравнения");
+
+    // Update button texts
+    HWND hSolveBtn = GetDlgItem(hwnd, 1001);
+    HWND hResetBtn = GetDlgItem(hwnd, 1002);
+    HWND hExportBtn = GetDlgItem(hwnd, 1003);
+    HWND hHelpBtn = GetDlgItem(hwnd, 1004);
+
+    if (hSolveBtn) SetWindowText(hSolveBtn, langContext.getSolveBtn());
+    if (hResetBtn) SetWindowText(hResetBtn, langContext.getResetBtn());
+    if (hExportBtn) SetWindowText(hExportBtn, langContext.getExportBtn());
+    if (hHelpBtn) SetWindowText(hHelpBtn, langContext.getHelpBtn());
+
+    // Update group box titles
+    if (g_appData.hCoeffGroup) SetWindowText(g_appData.hCoeffGroup, langContext.getCoeffGroup());
+    if (g_appData.hBCGroup) SetWindowText(g_appData.hBCGroup, langContext.getBcGroup());
+    if (g_appData.hSolInfoGroup) SetWindowText(g_appData.hSolInfoGroup, langContext.getSolInfoGroup());
+
+    // Update preset combo box label
+    if (g_appData.hPresetLabel) SetWindowText(g_appData.hPresetLabel, langContext.getEquationPreset());
+
+    // Update preset combo box options
+    if (g_appData.hPresetCombo) {
+        // Save current selection
+        int currentSel = static_cast<int>(SendMessage(g_appData.hPresetCombo, CB_GETCURSEL, 0, 0));
+
+        // Clear and re-add items
+        SendMessage(g_appData.hPresetCombo, CB_RESETCONTENT, 0, 0);
+        for (int i = 0; i < 7; i++) {
+            SendMessage(g_appData.hPresetCombo, CB_ADDSTRING, 0, (LPARAM)langContext.getPresetOption(i));
+        }
+
+        // Restore selection
+        SendMessage(g_appData.hPresetCombo, CB_SETCURSEL, currentSel, 0);
+    }
+
+    // Update boundary condition combo boxes
+    HWND bcCombos[] = {g_appData.hWestBC, g_appData.hEastBC, g_appData.hSouthBC, g_appData.hNorthBC};
+    for (int i = 0; i < 4; i++) {
+        if (bcCombos[i]) {
+            // Save current selection
+            int currentSel = static_cast<int>(SendMessage(bcCombos[i], CB_GETCURSEL, 0, 0));
+
+            // Clear and re-add items
+            SendMessage(bcCombos[i], CB_RESETCONTENT, 0, 0);
+            for (int j = 0; j < 2; j++) {
+                SendMessage(bcCombos[i], CB_ADDSTRING, 0, (LPARAM)langContext.getBcType(j));
+            }
+
+            // Restore selection
+            SendMessage(bcCombos[i], CB_SETCURSEL, currentSel, 0);
+        }
+    }
+
+    // Update status bar if it exists
+    if (g_appData.hStatus) {
+        int currentSel = static_cast<int>(SendMessage(g_appData.hPresetCombo, CB_GETCURSEL, 0, 0));
+        if (currentSel == 0) {
+            SetWindowText(g_appData.hStatus, langContext.getStatusReady());
+        } else {
+            SetWindowText(g_appData.hStatus, langContext.getStatusPresetLoaded());
+        }
+    }
+
+    // Update the language toggle button to show the opposite language (so user knows which language will be switched to)
+    HWND hLangBtn = GetDlgItem(hwnd, 1005);
+    if (hLangBtn) {
+        SetWindowText(hLangBtn, (langContext.getLanguageType() == Language::English) ? "RU" : "EN");
+    }
+
+    // Refresh the window to update all controls
+    InvalidateRect(hwnd, NULL, TRUE);
+}
 
 void LoadPreset(int presetIndex) {
     // Adjust presetIndex to be 0-based for array access (since combo box starts from 1)
