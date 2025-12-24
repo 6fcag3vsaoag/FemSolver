@@ -200,6 +200,7 @@ void CreateControls(HWND hwnd);
 void OnSolveButtonClicked(HWND hwnd);
 void OnResetButtonClicked(HWND hwnd);
 void OnExportButtonClicked(HWND hwnd);
+void OnPresetHelpClicked(HWND hwnd);
 void OnPresetChanged(HWND hwnd, int presetIndex);
 void LoadPreset(int presetIndex);
 void SwitchLanguage();
@@ -452,6 +453,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     SwitchLanguage();
                     UpdateLanguageStrings(hwnd);
                     break;
+                case 1006: // Preset help button
+                    OnPresetHelpClicked(hwnd);
+                    break;
                 case 2000: // Preset combo box
                     if (HIWORD(wParam) == CBN_SELCHANGE) {
                         LRESULT selResult = SendMessage((HWND)lParam, CB_GETCURSEL, 0, 0);
@@ -499,17 +503,23 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     int visHeight = newHeight - 60; // Leave 60px for status bar and margins
                     MoveWindow(g_appData.hVisualFrame, rightStart, 10, rightWidth - 20, visHeight, TRUE);
                 }
-
-                // Resize the preset combo box
+                
+                // Reposition Preset controls
                 int presetLabelWidth = static_cast<int>(leftWidth * 0.28);
-                if (g_appData.hPresetCombo) {
-                    MoveWindow(g_appData.hPresetCombo, leftStart + presetLabelWidth, 8, leftWidth - presetLabelWidth - 10, 150, TRUE);
-                }
+                int helpButtonWidth = 30;
+                int comboWidth = leftWidth - presetLabelWidth - helpButtonWidth - 15;
 
-                // Resize the preset label
                 if (g_appData.hPresetLabel) {
                     MoveWindow(g_appData.hPresetLabel, leftStart, 10, presetLabelWidth, 25, TRUE);
                 }
+                if (g_appData.hPresetCombo) {
+                    MoveWindow(g_appData.hPresetCombo, leftStart + presetLabelWidth, 8, comboWidth, 150, TRUE);
+                }
+                HWND hHelpBtn = GetDlgItem(hwnd, 1006);
+                if (hHelpBtn) {
+                    MoveWindow(hHelpBtn, leftStart + presetLabelWidth + comboWidth + 5, 8, helpButtonWidth, 28, TRUE);
+                }
+
 
                 // Resize the buttons - use dynamic width calculation based on text length
                 int buttonY = 45;
@@ -718,10 +728,18 @@ void CreateControls(HWND hwnd) {
 
     // Top section: Preset selection
     int presetLabelWidth = static_cast<int>(leftWidth * 0.28); // About 28% of the left panel width
+    int helpButtonWidth = 30; // Width for the '?' button
+    int comboWidth = leftWidth - presetLabelWidth - helpButtonWidth - 15; // Remaining width for the combo box
+
     g_appData.hPresetLabel = CreateWindowW(L"Static", langContext.getEquationPreset(), WS_VISIBLE | WS_CHILD, leftStart, 10, presetLabelWidth, 25, hwnd, NULL, GetModuleHandle(NULL), NULL);
     g_appData.hPresetCombo = CreateWindowW(L"ComboBox", L"",
                                           WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
-                                          leftStart + presetLabelWidth, 8, leftWidth - presetLabelWidth - 10, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
+                                          leftStart + presetLabelWidth + 5, 8, comboWidth, 150, hwnd, (HMENU)2000, GetModuleHandle(NULL), NULL);
+
+    // Add Help button
+    CreateWindowW(L"Button", L"?", WS_VISIBLE | WS_CHILD,
+                  leftStart + presetLabelWidth + comboWidth + 10, 8, helpButtonWidth, 28, hwnd, (HMENU)1006, GetModuleHandle(NULL), NULL);
+
 
     // Add preset options based on current language
     for (int i = 0; i < 7; i++) {
@@ -1406,7 +1424,8 @@ void OnPresetChanged(HWND hwnd, int presetIndex) {
 // Structure to hold preset data
 struct PresetData {
     const wchar_t* name;
-    const wchar_t* description;
+    const wchar_t* description_en;
+    const wchar_t* description_ru;
     const wchar_t* lx, * ly, * nx, * ny;
     const wchar_t* a11, * a12, * a22, * b1, * b2, * c, * f;
     const wchar_t* westValue, * eastValue, * southValue, * northValue;
@@ -1415,126 +1434,117 @@ struct PresetData {
 // Define all presets in a structured way
 const PresetData PRESETS[] = {
     { L"Laplace Equation",
-      L"LAPLACE EQUATION\\n\\n"
-      L"Solves: ∂²u/∂x² + ∂²u/∂y² = 0\\n\\n"
-      L"Description:\\n"
-      L"Classic Laplace equation describing steady-state processes:\\n"
-      L"- Heat distribution without sources\\n"
-      L"- Electrostatic potential in vacuum\\n"
-      L"- Potential flow of incompressible fluid\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11 = a22 = 1 (unit diffusion)\\n"
-      L"- a12 = b1 = b2 = c = f = 0 (no mixed derivatives, convection, reaction or sources)\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"All sides: u = x² + y²",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"Describes steady-state phenomena without sources or sinks, such as:\n" 
+      L"- Temperature distribution in a stationary state.\n" 
+      L"- Electrostatic potential in a charge-free region.\n" 
+      L"- Potential of an ideal incompressible fluid flow.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"∇²u = ∂²u/∂x² + ∂²u/∂y² = 0\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"This preset models heat distribution on a unit plate where the boundary temperature is defined by the function u(x,y) = x² + y².",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Описывает стационарные явления без источников или стоков, такие как:\n" 
+      L"- Распределение температуры в стационарном состоянии.\n" 
+      L"- Электростатический потенциал в области без зарядов.\n" 
+      L"- Потенциал идеального течения несжимаемой жидкости.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"∇²u = ∂²u/∂x² + ∂²u/∂y² = 0\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"Эта предустановка моделирует распределение тепла на единичной пластине, где температура на границе задана функцией u(x,y) = x² + y².",
       L"1.0", L"1.0", L"20", L"20",
       L"1.0", L"0.0", L"1.0", L"0.0", L"0.0", L"0.0", L"0.0",
-      L"x*x + y*y", L"x*x + y*y", L"x*x + y*y", L"x*x + y*y"
+      L"y*y", L"1+y*y", L"x*x", L"1+x*x"
     },
     { L"Poisson Equation",
-      L"POISSON EQUATION\\n\\n"
-      L"Solves: ∂²u/∂x² + ∂²u/∂y² = 8π²·sin(2πx)·sin(2πy)\\n\\n"
-      L"Description:\\n"
-      L"Poisson equation with known analytical solution:\\n"
-      L"- Heat distribution with sources\\n"
-      L"- Electrostatic potential with charges\\n"
-      L"- Stationary processes with sources/sinks\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11 = a22 = 1 (unit diffusion)\\n"
-      L"- a12 = b1 = b2 = c = 0 (no mixed derivatives, convection, reaction)\\n"
-      L"- f(x,y) = 8π²·sin(2πx)·sin(2πy) (harmonic source)\\n\\n"
-      L"Analytical Solution:\\n"
-      L"u(x,y) = sin(2πx)·sin(2πy)\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"Zero Dirichlet conditions on all boundaries (u = 0)",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"Describes phenomena with a specified source or sink term 'f', such as:\n" 
+      L"- Heat distribution with an internal heat source.\n" 
+      L"- Electrostatic potential in the presence of a charge distribution.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"-∇²u = f(x,y)\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"This preset has a known analytical solution u(x,y) = sin(2πx)sin(2πy) for the source f(x,y) = 8π²sin(2πx)sin(2πy). The boundary conditions are set to zero. The numerical solution can be compared to the analytical one to verify the solver's accuracy.",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Описывает явления с заданным источником или стоком 'f', такие как:\n" 
+      L"- Распределение тепла с внутренним источником тепла.\n" 
+      L"- Электростатический потенциал при наличии распределения заряда.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"-∇²u = f(x,y)\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"Эта предустановка имеет известное аналитическое решение u(x,y) = sin(2πx)sin(2πy) для источника f(x,y) = 8π²sin(2πx)sin(2πy). Граничные условия нулевые. Численное решение можно сравнить с аналитическим для проверки точности решателя.",
       L"1.0", L"1.0", L"20", L"20",
       L"1.0", L"0.0", L"1.0", L"0.0", L"0.0", L"0.0", L"8*pi*pi*sin(2*pi*x)*sin(2*pi*y)",
       L"0.0", L"0.0", L"0.0", L"0.0"
     },
     { L"Helmholtz Equation",
-      L"HELMHOLTZ EQUATION\\n\\n"
-      L"Solves: ∂²u/∂x² + ∂²u/∂y² + u = cos(πx/3)·cos(πy)\\n\\n"
-      L"Description:\\n"
-      L"Helmholtz equation - important elliptic equation:\\n"
-      L"- Wave processes in frequency domain\\n"
-      L"- Quantum mechanics (stationary Schrödinger equation)\\n"
-      L"- Acoustics and electromagnetic waves\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11 = a22 = 1 (diffusion)\\n"
-      L"- c = 1 (reaction term)\\n"
-      L"- a12 = b1 = b2 = 0\\n"
-      L"- f(x,y) = cos(πx/3)·cos(πy) (source)\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"- West: Neumann (∂u/∂n = 0) - symmetry\\n"
-      L"- Others: Dirichlet with specified values",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"Arises in physics when studying wave phenomena, vibrations, or diffusion-reaction processes. It is often called the 'reaction-diffusion' equation. Examples:\n" 
+      L"- Time-independent form of the wave equation.\n" 
+      L"- Propagation of acoustic or electromagnetic waves.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"∇²u + k²u = f(x,y)\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"Here, k² is represented by the coefficient 'c'. This preset models a wave-like phenomenon on a 3x1 rectangular domain with a source term and mixed boundary conditions.",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Возникает в физике при изучении волновых явлений, колебаний или процессов диффузии-реакции. Его часто называют уравнением 'реакция-диффузия'. Примеры:\n" 
+      L"- Стационарная форма волнового уравнения.\n" 
+      L"- Распространение акустических или электромагнитных волн.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"∇²u + k²u = f(x,y)\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"Здесь k² представлен коэффициентом 'c'. Эта предустановка моделирует волноподобное явление на прямоугольной области 3x1 с источником и смешанными граничными условиями.",
       L"3.0", L"1.0", L"30", L"10",
       L"1.0", L"0.0", L"1.0", L"0.0", L"0.0", L"1.0", L"cos(pi*x/3)*cos(pi*y)",
       L"0.0", L"cos(pi*3/3)*cos(pi*y)", L"cos(pi*x/3)*cos(0)", L"cos(pi*x/3)*cos(pi*1)"
     },
     { L"Convection-Diffusion",
-      L"CONVECTION-DIFFUSION\\n\\n"
-      L"Solves: (0.01+0.005x)∂²u/∂x² + (0.01+0.005x)∂²u/∂y² + ∂u/∂x = exp(-10·((x-2)²+(y-0.5)²))\\n\\n"
-      L"Description:\\n"
-      L"Convection-diffusion equation describing transport:\\n"
-      L"- Pollutant transport in atmosphere or water\\n"
-      L"- Heat transfer with fluid motion\\n"
-      L"- Diffusion in flowing media\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11 = a22 = 0.01 + 0.005x (variable diffusion)\\n"
-      L"- b1 = 1 (convection in positive X direction)\\n"
-      L"- b2 = 0 (no convection in Y)\\n"
-      L"- a12 = c = 0\\n"
-      L"- f(x,y) = exp(-10·((x-2)²+(y-0.5)²)) (local source)\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"- West: Dirichlet u = 1 (inlet concentration)\\n"
-      L"- East: Dirichlet u = 0 (outlet concentration)\\n"
-      L"- South/North: Neumann (symmetry)",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"Models the transport of a substance (e.g., pollutant, heat) due to two processes: convection (transport by bulk motion of a fluid) and diffusion (transport from high to low concentration). The Péclet number (Pe = |b|L/a) indicates which process dominates.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"-∇·(a∇u) + b·∇u = f(x,y)\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"Models the transport of a substance with concentration 1 at the left inlet (x=0) and 0 at the right outlet (x=2). The flow field 'b' pushes the substance to the right, while diffusion 'a' spreads it out. A source 'f' is present near the outlet. Expect a plume developing from left to right.",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Моделирует перенос вещества (напр., загрязнителя, тепла) за счет двух процессов: конвекции (перенос объемным движением жидкости) и диффузии (перенос из области высокой концентрации в низкую). Число Пекле (Pe = |b|L/a) показывает, какой процесс доминирует.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"-∇·(a∇u) + b·∇u = f(x,y)\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"Моделирует перенос вещества с концентрацией 1 на левом входе (x=0) и 0 на правом выходе (x=2). Поле течения 'b' переносит вещество вправо, а диффузия 'a' его рассеивает. Вблизи выхода имеется источник 'f'. Ожидается шлейф, распространяющийся слева направо.",
       L"2.0", L"1.0", L"40", L"20",
       L"0.01 + 0.005*x", L"0.0", L"0.01 + 0.005*x", L"1.0", L"0.0", L"0.0", L"exp(-10*((x-2)^2 + (y-0.5)^2))",
       L"1.0", L"0.0", L"0.0", L"0.0"
     },
     { L"Reaction-Diffusion",
-      L"REACTION-DIFFUSION\\n\\n"
-      L"Solves: (0.1+0.05xy)∂²u/∂x² + (0.05xy)∂²u/∂y² + u = 10·exp(-5·((x-1)²+(y-1)²)) + 2π²·cos(πx)·cos(πy)\\n\\n"
-      L"Description:\\n"
-      L"Reaction-diffusion equations modeling many processes:\\n"
-      L"- Population dynamics of species\\n"
-      L"- Chemical reactions with diffusion\\n"
-      L"- Neural impulse propagation\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11 = a22 = 0.1 + 0.05xy (variable diffusion)\\n"
-      L"- c = 1 (linear reaction)\\n"
-      L"- a12 = b1 = b2 = 0\\n"
-      L"- f(x,y) = complex source (exponential + harmonic)\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"Mixed conditions:\\n"
-      L"- Some: Dirichlet with different values\\n"
-      L"- North: Neumann ∂u/∂n = 5",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"Similar to the Helmholtz equation, this equation models processes where a substance both diffuses and reacts. The 'c' term represents the reaction rate. If c > 0, it's a decay/absorption; if c < 0, it's a growth/generation.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"-∇·(a∇u) + cu = f(x,y)\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"This preset features a variable diffusion coefficient 'a' and a positive reaction term 'c', modeling a process with diffusion and absorption. A complex source 'f' is applied. The boundary conditions are of mixed types.",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Подобно уравнению Гельмгольца, это уравнение моделирует процессы, в которых вещество одновременно диффундирует и реагирует. Член 'c' представляет скорость реакции. Если c > 0 - это распад/поглощение; если c < 0 - рост/генерация.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"-∇·(a∇u) + cu = f(x,y)\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"В этой предустановке используется переменный коэффициент диффузии 'a' и положительный реакционный член 'c', моделируя процесс с диффузией и поглощением. Применяется сложный источник 'f'. Граничные условия - смешанного типа.",
       L"2.0", L"2.0", L"30", L"30",
       L"0.1 + 0.05*x*y", L"0.0", L"0.1 + 0.05*x*y", L"0.0", L"0.0", L"1.0", L"10*exp(-5*((x-1)^2 + (y-1)^2)) + 2*pi^2*cos(pi*x)*cos(pi*y)",
       L"20.0", L"10.0", L"15.0", L"5.0"
     },
     { L"General Elliptic",
-      L"GENERAL ELLIPTIC\\n\\n"
-      L"Solves: General elliptic equation with variable coefficients\\n"
-      L"(1+0.5sin(πx)cos(πy))∂²u/∂x² + 2·0.2∂²u/∂x∂y + (0.8+0.3cos(πx))∂²u/∂y² + 0.2x∂u/∂x + 0.1y∂u/∂y + 0.1u = sin(πx/2)sin(πy) + 0.5π²cos(πx/2)cos(πy)\\n\\n"
-      L"Description:\\n"
-      L"General elliptic equation encompassing all physical effects:\\n"
-      L"- Variable diffusion in both directions\\n"
-      L"- Mixed derivative term\\n"
-      L"- Convection in both directions\\n"
-      L"- Reaction term\\n\\n"
-      L"Coefficients:\\n"
-      L"- a11(x,y) = 1 + 0.5sin(πx)cos(πy) (variable diffusion)\\n"
-      L"- a12 = 0.2 (mixed derivative coefficient)\\n"
-      L"- a22(x,y) = 0.8 + 0.3cos(πx) (variable diffusion)\\n"
-      L"- b1(x,y) = 0.2x (convection in x)\\n"
-      L"- b2(x,y) = 0.1y (convection in y)\\n"
-      L"- c = 0.1 (reaction)\\n"
-      L"- f(x,y) = source term\\n\\n"
-      L"Boundary Conditions:\\n"
-      L"- West: Neumann\\n"
-      L"- Others: Dirichlet",
+      L"--- PHYSICAL INTERPRETATION ---\n" 
+      L"This is the most general form, combining diffusion (a), convection (b), and reaction (c). The 'a12' term represents anisotropic diffusion, where the diffusion rate depends on the direction.\n\n" 
+      L"--- EQUATION ---\n" 
+      L"-∇·(a∇u) + b·∇u + cu = f(x,y)\n\n" 
+      L"--- PRESET PARAMETERS ---\n" 
+      L"This preset showcases a complex scenario with variable and anisotropic diffusion, convection in both x and y directions, a reaction term, and a source. This can model complex physical systems like heat transfer in a moving, non-uniform medium.",
+      L"--- ФИЗИЧЕСКАЯ ИНТЕРПРЕТАЦИЯ ---\n" 
+      L"Это наиболее общая форма, объединяющая диффузию (a), конвекцию (b) и реакцию (c). Член 'a12' представляет анизотропную диффузию, где скорость диффузии зависит от направления.\n\n" 
+      L"--- УРАВНЕНИЕ ---\n" 
+      L"-∇·(a∇u) + b·∇u + cu = f(x,y)\n\n" 
+      L"--- ПАРАМЕТРЫ ПРЕДУСТАНОВКИ ---\n" 
+      L"Эта предустановка демонстрирует сложный сценарий с переменной и анизотропной диффузией, конвекцией в направлениях x и y, реакционным членом и источником. Это может моделировать сложные физические системы, такие как теплопередача в движущейся, неоднородной среде.",
       L"2.0", L"1.0", L"50", L"25",
       L"1 + 0.5*sin(pi*x)*cos(pi*y)", L"0.2", L"0.8 + 0.3*cos(pi*x)", L"0.2*x", L"0.1*y", L"0.1", L"sin(pi*x/2)*sin(pi*y) + 0.5*pi^2*cos(pi*x/2)*cos(pi*y)",
       L"0.0", L"1.0", L"0.0", L"0.0"
@@ -1542,6 +1552,23 @@ const PresetData PRESETS[] = {
 };
 
 const int NUM_PRESETS = sizeof(PRESETS) / sizeof(PRESETS[0]);
+
+void OnPresetHelpClicked(HWND hwnd) {
+    LRESULT selResult = SendMessage(g_appData.hPresetCombo, CB_GETCURSEL, 0, 0);
+    int selection = static_cast<int>(selResult);
+
+    if (selection > 0 && selection <= NUM_PRESETS) {
+        int idx = selection - 1;
+        const PresetData& preset = PRESETS[idx];
+        const wchar_t* description = (langContext.getLanguageType() == Language::Russian) ? preset.description_ru : preset.description_en;
+        MessageBoxW(hwnd, description, preset.name, MB_OK | MB_ICONINFORMATION);
+    } else {
+        const wchar_t* msg = (langContext.getLanguageType() == Language::Russian) ? L"Выберите предустановку, чтобы увидеть справку." : L"Please select a preset to see its help information.";
+        const wchar_t* title = (langContext.getLanguageType() == Language::Russian) ? L"Справка" : L"Help";
+        MessageBoxW(hwnd, msg, title, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 
 // Function to switch between languages using strategy pattern
 void SwitchLanguage() {
@@ -1692,9 +1719,6 @@ void LoadPreset(int presetIndex) {
     solutionInfo << L"  f(x,y) = " << buffer << L"\n";
 
     SetWindowTextW(g_appData.hSolutionInfo, solutionInfo.str().c_str());
-
-    // Show preset description in message box
-    MessageBoxW(NULL, preset.description, preset.name, MB_OK | MB_ICONINFORMATION);
 
     // Clear any stored solution data to prevent showing stale visualization
     g_appData.lastSolution.clear();
