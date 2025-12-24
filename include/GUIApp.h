@@ -16,7 +16,7 @@ public:
     ~GUIApp();
 
     void initialize();
-    void run();
+    int run();
     void createMainWindow();
     void setupEventHandlers();
     void updateUI();

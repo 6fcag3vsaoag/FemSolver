@@ -15,6 +15,11 @@ project ("FemSolver")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Установка кодировки для MSVC
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 # Директории для заголовков
 include_directories("include")
 
@@ -51,11 +56,13 @@ if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET FemSolver PROPERTY CXX_STANDARD 17)
 endif()
 
+# Set preprocessor definitions for Unicode support
+add_definitions(-DUNICODE -D_UNICODE)
 
 # Set Windows subsystem to prevent console window from appearing
 if (WIN32)
   if(MSVC)
-    set_target_properties(FemSolver PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup")
+    set_target_properties(FemSolver PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:wWinMainCRTStartup")
   else()
     set_target_properties(FemSolver PROPERTIES LINK_FLAGS "/SUBSYSTEM:WINDOWS")
   endif()

@@ -31,13 +31,13 @@ EllipticApp::EllipticApp()
 
 EllipticApp::~EllipticApp() = default;
 
-void EllipticApp::run(bool useGUI) {
+int EllipticApp::run(bool useGUI) {
     if (useGUI) {
         try {
             // Initialize and run the GUI with reference to this solver
             // The FemSolver will call this with the correct solver reference
             guiApp_->initialize();
-            guiApp_->run();  // Just run the GUI, the solver will be set from FemSolver
+            return guiApp_->run();  // Return the result from GUI app
         } catch (const std::exception& e) {
             #ifdef _DEBUG
             std::cerr << "Error running GUI: " << e.what() << std::endl;
@@ -49,9 +49,11 @@ void EllipticApp::run(bool useGUI) {
             #endif
             #endif
             runConsoleMode();
+            return -1;  // Return error code
         }
     } else {
         runConsoleMode();
+        return 0;  // Return success code
     }
 }
 

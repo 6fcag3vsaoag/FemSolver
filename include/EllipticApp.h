@@ -20,7 +20,7 @@ public:
     ~EllipticApp();  // Defined in implementation to handle unique_ptr to forward-declared type
 
     // Run the application (with or without GUI)
-    void run(bool useGUI = true);
+    int run(bool useGUI = true);
 
     // Generate mesh
     void generateMesh();

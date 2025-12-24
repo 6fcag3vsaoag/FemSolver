@@ -42,8 +42,7 @@ int FemSolver::run() {
         if (app) {
             // Set the solver in the GUI before running it
             app->setSolverForGUI(this);
-            app->run(true);  // Use GUI by default
-            return 0;
+            return app->run(true);  // Use GUI by default, return the result
         } else {
             #ifdef _DEBUG
             std::cerr << "Error: Application not initialized" << std::endl;
