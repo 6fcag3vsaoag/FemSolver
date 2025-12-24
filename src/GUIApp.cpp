@@ -191,8 +191,10 @@ EnglishLanguageStrategy englishStrategy;
 LanguageContext langContext(&englishStrategy);
 
 AppData g_appData;
+WNDPROC g_pfnOldVisualFrameProc = NULL;
 
-// Function declarations
+// Forward function declarations
+LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 void CreateControls(HWND hwnd);
 void OnSolveButtonClicked(HWND hwnd);
@@ -202,6 +204,137 @@ void OnPresetChanged(HWND hwnd, int presetIndex);
 void LoadPreset(int presetIndex);
 void SwitchLanguage();
 void UpdateLanguageStrings(HWND hwnd);
+
+// Custom Window Procedure for the Visualization Frame
+LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            RECT rect;
+            GetClientRect(hwnd, &rect);
+
+            // Fill background
+            HBRUSH bgBrush = CreateSolidBrush(RGB(240, 240, 240));
+            FillRect(hdc, &rect, bgBrush);
+            DeleteObject(bgBrush);
+
+            // Visualize the solution
+            if (g_appData.hasLastSolution && !g_appData.lastSolution.empty()) {
+                const std::vector<double>& solution = g_appData.lastSolution;
+                const Mesh& mesh = g_appData.lastMesh;
+
+                // Draw title
+                SetTextColor(hdc, RGB(0, 0, 0));
+                SetBkMode(hdc, TRANSPARENT);
+                std::wstring title = L"Solution Visualization";
+                TextOutW(hdc, 10, 10, title.c_str(), static_cast<int>(title.length()));
+
+                // Draw solution stats
+                std::wostringstream wstats;
+                wstats << L"Nodes: " << solution.size()
+                       << L", Elements: " << mesh.elements.size();
+                TextOutW(hdc, 10, 30, wstats.str().c_str(), static_cast<int>(wstats.str().length()));
+
+                // Draw a simplified visualization
+                int visChartLeft = 10;
+                int visChartTop = 60;
+                int visChartWidth = rect.right - 20;
+                int visChartHeight = rect.bottom - 80;
+
+                if (visChartWidth > 20 && visChartHeight > 20) {
+                    // Draw bounding rectangle
+                    Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
+
+                    if (solution.size() >= 4) {
+                        double minVal = *std::min_element(solution.begin(), solution.end());
+                        double maxVal = *std::max_element(solution.begin(), solution.end());
+                        double range = (maxVal == minVal) ? 1.0 : (maxVal - minVal);
+
+                        int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;
+                        int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
+
+                        int cellWidth = visChartWidth / gridX;
+                        int cellHeight = visChartHeight / gridY;
+
+                        if (cellWidth >= 1 && cellHeight >= 1) {
+                            int xStep = std::max(1, g_appData.Nx / gridX);
+                            int yStep = std::max(1, g_appData.Ny / gridY);
+
+                            for (int y = 0; y < g_appData.Ny && y < gridY; y += yStep) {
+                                for (int x = 0; x < g_appData.Nx && x < gridX; x += xStep) {
+                                    int idx = y * g_appData.Nx + x;
+                                    if (idx >= 0 && idx < static_cast<int>(solution.size())) {
+                                        double val = solution[idx];
+                                        double normVal = (range != 0) ? (val - minVal) / range : 0.0;
+
+                                        int r = static_cast<int>(normVal * 255);
+                                        int b = static_cast<int>((1.0 - normVal) * 255);
+                                        int g = static_cast<int>(normVal * 128);
+
+                                        HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
+                                        RECT cellRect;
+                                        cellRect.left = visChartLeft + (x/xStep) * cellWidth;
+                                        cellRect.top = visChartTop + (y/yStep) * cellHeight;
+                                        cellRect.right = cellRect.left + cellWidth;
+                                        cellRect.bottom = cellRect.top + cellHeight;
+
+                                        FillRect(hdc, &cellRect, cellBrush);
+                                        FrameRect(hdc, &cellRect, (HBRUSH)GetStockObject(BLACK_BRUSH));
+                                        DeleteObject(cellBrush);
+                                    }
+                                }
+                            }
+                        }
+
+                        int legendX = visChartLeft + visChartWidth + 5;
+                        int legendY = visChartTop;
+                        int legendHeight = 100;
+                        int legendWidth = 20;
+
+                        if (legendY + legendHeight < rect.bottom && legendX + legendWidth < rect.right) {
+                            for (int i = 0; i < legendHeight; i++) {
+                                double ratio = static_cast<double>(i) / legendHeight;
+                                int r = static_cast<int>(ratio * 255);
+                                int b = static_cast<int>((1.0 - ratio) * 255);
+                                int g = static_cast<int>(ratio * 128);
+
+                                HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
+                                RECT legendRect;
+                                legendRect.left = legendX;
+                                legendRect.top = legendY + i;
+                                legendRect.right = legendX + legendWidth;
+                                legendRect.bottom = legendY + i + 1;
+                                FillRect(hdc, &legendRect, legendBrush);
+                                DeleteObject(legendBrush);
+                            }
+
+                            std::ostringstream lowLabel;
+                            lowLabel << std::fixed << std::setprecision(2) << minVal;
+                            std::ostringstream highLabel;
+                            highLabel << std::fixed << std::setprecision(2) << maxVal;
+
+                            TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
+                            TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
+                        }
+                    }
+                }
+            } else {
+                SetTextColor(hdc, RGB(128, 128, 128));
+                std::wstring placeholder = L"No solution computed yet.\nClick 'Solve' to compute.";
+                RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
+                DrawTextW(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
+            }
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+    }
+    return CallWindowProc(g_pfnOldVisualFrameProc, hwnd, msg, wParam, lParam);
+}
+
 
 GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
     // Initialize common controls
@@ -555,149 +688,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         case WM_PAINT:
             {
-                // Handle painting for the visualization frame
-                HWND visualFrame = g_appData.hVisualFrame;
-                if (visualFrame && IsWindow(visualFrame)) {
-                    // Check if this paint message is for the visualization frame
-                    if (wParam == NULL || reinterpret_cast<HWND>(wParam) == visualFrame) {
-                        PAINTSTRUCT ps;
-                        HDC hdc = BeginPaint(visualFrame, &ps);
-
-                        RECT rect;
-                        GetClientRect(visualFrame, &rect);
-
-                        // Fill background
-                        HBRUSH bgBrush = CreateSolidBrush(RGB(240, 240, 240));
-                        FillRect(hdc, &rect, bgBrush);
-                        DeleteObject(bgBrush);
-
-                        // Visualize the solution
-                        // First, try to use the locally stored solution if available
-                        if (g_appData.hasLastSolution && !g_appData.lastSolution.empty()) {
-                            const std::vector<double>& solution = g_appData.lastSolution;
-                            const Mesh& mesh = g_appData.lastMesh;
-
-                            // Draw title
-                            SetTextColor(hdc, RGB(0, 0, 0));
-                            SetBkMode(hdc, TRANSPARENT);
-                            std::wstring title = L"Solution Visualization";
-                            TextOutW(hdc, 10, 10, title.c_str(), static_cast<int>(title.length()));
-
-                            // Draw solution stats (using precomputed values to avoid intensive calculation)
-                            // We'll use the solution size and a simple placeholder for now to avoid intensive computation
-                            std::wostringstream wstats;
-                            wstats << L"Nodes: " << solution.size()
-                                   << L", Elements: " << mesh.elements.size();
-                            TextOutW(hdc, 10, 30, wstats.str().c_str(), static_cast<int>(wstats.str().length()));
-
-                            // Draw a simplified visualization
-                            int visChartLeft = 10;
-                            int visChartTop = 60;
-                            int visChartWidth = rect.right - 20;
-                            int visChartHeight = rect.bottom - 80;
-
-                            if (visChartWidth > 20 && visChartHeight > 20) {
-                                // Draw bounding rectangle
-                                Rectangle(hdc, visChartLeft, visChartTop, visChartLeft + visChartWidth, visChartTop + visChartHeight);
-
-                                // Draw solution as a color gradient if we have data
-                                // Compute min/max values for proper normalization
-                                if (solution.size() >= 4) {
-                                    // Find min and max values in the solution for proper scaling
-                                    double minVal = *std::min_element(solution.begin(), solution.end());
-                                    double maxVal = *std::max_element(solution.begin(), solution.end());
-                                    double range = (maxVal == minVal) ? 1.0 : (maxVal - minVal);
-
-                                    // Use a simplified grid view based on the mesh
-                                    int gridX = (g_appData.Nx < 50) ? g_appData.Nx : 50;  // Increase grid limit for better visualization
-                                    int gridY = (g_appData.Ny < 50) ? g_appData.Ny : 50;
-
-                                    int cellWidth = visChartWidth / gridX;
-                                    int cellHeight = visChartHeight / gridY;
-
-                                    if (cellWidth >= 1 && cellHeight >= 1) {
-                                        // Visualize all solution points (without sampling to show more detail)
-                                        int xStep = std::max(1, g_appData.Nx / gridX);
-                                        int yStep = std::max(1, g_appData.Ny / gridY);
-
-                                        for (int y = 0; y < g_appData.Ny && y < gridY; y += yStep) {
-                                            for (int x = 0; x < g_appData.Nx && x < gridX; x += xStep) {
-                                                int idx = y * g_appData.Nx + x;
-                                                if (idx >= 0 && idx < static_cast<int>(solution.size())) {
-                                                    double val = solution[idx];
-                                                    // Normalize using actual min/max values for better visualization
-                                                    double normVal = (range != 0) ? (val - minVal) / range : 0.0;
-
-                                                    // Create color based on solution value (blue=low, red=high, green=medium)
-                                                    int r = static_cast<int>(normVal * 255);
-                                                    int b = static_cast<int>((1.0 - normVal) * 255);
-                                                    int g = static_cast<int>(normVal * 128); // Green channel for intermediate values
-
-                                                    HBRUSH cellBrush = CreateSolidBrush(RGB(r, g, b));
-                                                    RECT cellRect;
-                                                    cellRect.left = visChartLeft + (x/xStep) * cellWidth;
-                                                    cellRect.top = visChartTop + (y/yStep) * cellHeight;
-                                                    cellRect.right = cellRect.left + cellWidth;
-                                                    cellRect.bottom = cellRect.top + cellHeight;
-
-                                                    FillRect(hdc, &cellRect, cellBrush);
-                                                    FrameRect(hdc, &cellRect, (HBRUSH)GetStockObject(BLACK_BRUSH));
-                                                    DeleteObject(cellBrush);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Draw legend with actual min/max values
-                                    int legendX = visChartLeft + visChartWidth + 5;
-                                    int legendY = visChartTop;
-                                    int legendHeight = 100;
-                                    int legendWidth = 20;
-
-                                    if (legendY + legendHeight < rect.bottom && legendX + legendWidth < rect.right) {
-                                        // Draw color legend
-                                        for (int i = 0; i < legendHeight; i++) {
-                                            double ratio = static_cast<double>(i) / legendHeight;
-                                            int r = static_cast<int>(ratio * 255);
-                                            int b = static_cast<int>((1.0 - ratio) * 255);
-                                            int g = static_cast<int>(ratio * 128);
-
-                                            HBRUSH legendBrush = CreateSolidBrush(RGB(r, g, b));
-                                            RECT legendRect;
-                                            legendRect.left = legendX;
-                                            legendRect.top = legendY + i;
-                                            legendRect.right = legendX + legendWidth;
-                                            legendRect.bottom = legendY + i + 1;
-                                            FillRect(hdc, &legendRect, legendBrush);
-                                            DeleteObject(legendBrush);
-                                        }
-
-                                        // Draw legend labels with actual min/max values
-                                        std::ostringstream lowLabel;
-                                        lowLabel << std::fixed << std::setprecision(2) << minVal;
-                                        std::ostringstream highLabel;
-                                        highLabel << std::fixed << std::setprecision(2) << maxVal;
-
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY, lowLabel.str().c_str(), static_cast<int>(lowLabel.str().length()));
-                                        TextOutA(hdc, legendX + legendWidth + 5, legendY + legendHeight - 15, highLabel.str().c_str(), static_cast<int>(highLabel.str().length()));
-                                    }
-                                }
-                            }
-                        } else {
-                            // No solution yet - show placeholder
-                            SetTextColor(hdc, RGB(128, 128, 128));
-                            std::wstring placeholder = L"No solution computed yet.\nClick 'Solve' to compute.";
-                            RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
-                            DrawTextW(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
-                        }
-
-                        EndPaint(visualFrame, &ps);
-                        return 0; // Handle internally, don't pass to DefWindowProc
-                    }
-                }
+                PAINTSTRUCT ps;
+                BeginPaint(hwnd, &ps);
+                EndPaint(hwnd, &ps);
+                return 0;
             }
-            // Pass to default for main window painting
-            return DefWindowProc(hwnd, msg, wParam, lParam);
 
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -928,6 +923,9 @@ void CreateControls(HWND hwnd) {
     g_appData.hVisualFrame = CreateWindowW(L"Static", L"Solution Visualization",
                                          WS_VISIBLE | WS_CHILD | WS_BORDER | SS_CENTERIMAGE | SS_CENTER,
                                          rightStart, 10, rightWidth - 20, height - 60, hwnd, NULL, GetModuleHandle(NULL), NULL);
+
+    // Subclass the visual frame to handle its painting
+    g_pfnOldVisualFrameProc = (WNDPROC)SetWindowLongPtr(g_appData.hVisualFrame, GWLP_WNDPROC, (LONG_PTR)VisualFrameWndProc);
 
     // Status bar at the bottom - adjusted for the solution info panel
     g_appData.hStatus = CreateWindowW(L"Static", langContext.getStatusReady(),
