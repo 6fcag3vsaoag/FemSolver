@@ -35,6 +35,9 @@ set(SOURCES
     "src/GUIApp.cpp"
     "src/ReportGenerator.cpp"
     "src/GdiVisualizer.cpp"
+    "src/Localization.cpp"
+    "src/PresetManager.cpp"
+    "src/WindowEventHandler.cpp"
 )
 
 # Список заголовочных файлов
@@ -51,6 +54,10 @@ set(HEADERS
     "include/IVisualizer.h"
     "include/GdiVisualizer.h"
     "include/StringUtils.h"
+    "include/Localization.h"
+    "include/PresetManager.h"
+    "include/GUIAppTypes.h"
+    "include/WindowEventHandler.h"
 )
 
 # Добавьте все исходники в исполняемый файл проекта
