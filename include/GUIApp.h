@@ -2,8 +2,9 @@
 #define GUIAPP_H
 
 #include "Types.h"
+#include "GdiVisualizer.h" // Include the concrete GDI visualizer
 #include <string>
-#include <memory>
+#include <memory>          // For std::unique_ptr
 
 // Forward declaration of FemSolver (to avoid circular includes)
 class FemSolver;
@@ -37,6 +38,9 @@ private:
 
     // For now, we'll store a reference to the core solver
     class FemSolver* coreSolver;
+
+    // GDI Visualizer instance
+    std::unique_ptr<GdiVisualizer> gdiVisualizer_;
 
     // Methods to update GUI from solver
     friend class EllipticApp;  // Allow EllipticApp to access these private methods

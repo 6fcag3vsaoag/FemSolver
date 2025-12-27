@@ -34,6 +34,7 @@ set(SOURCES
     "src/EllipticApp.cpp"
     "src/GUIApp.cpp"
     "src/ReportGenerator.cpp"
+    "src/GdiVisualizer.cpp"
 )
 
 # Список заголовочных файлов
@@ -47,6 +48,9 @@ set(HEADERS
     "include/EllipticApp.h"
     "include/GUIApp.h"
     "include/ReportGenerator.h"
+    "include/IVisualizer.h"
+    "include/GdiVisualizer.h"
+    "include/StringUtils.h"
 )
 
 # Добавьте все исходники в исполняемый файл проекта
