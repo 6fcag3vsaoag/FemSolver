@@ -41,6 +41,7 @@ set(SOURCES
     "src/VisualizationManager.cpp"
     "src/SolutionManager.cpp"
     "src/ExportManager.cpp"
+    "src/ResetManager.cpp"
 )
 
 # Список заголовочных файлов
@@ -64,6 +65,7 @@ set(HEADERS
     "include/VisualizationManager.h"
     "include/SolutionManager.h"
     "include/ExportManager.h"
+    "include/ResetManager.h"
 )
 
 # Добавьте все исходники в исполняемый файл проекта

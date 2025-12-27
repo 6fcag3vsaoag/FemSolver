@@ -35,6 +35,7 @@ GdiVisualizer* g_currentGdiVisualizer = nullptr; // TEMPORARY: For global access
 VisualizationManager* g_visualizationManager = nullptr; // Global visualization manager instance
 SolutionManager* g_solutionManager = nullptr; // Global solution manager instance
 ExportManager* g_exportManager = nullptr; // Global export manager instance
+ResetManager* g_resetManager = nullptr; // Global reset manager instance
 
 // Forward function declarations
 LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -125,6 +126,13 @@ GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
 
     // Set the global export manager
     g_exportManager = exportManager_.get();
+
+    // Initialize Reset Manager
+    resetManager_ = std::make_unique<ResetManager>();
+    resetManager_->initialize(&g_appData);
+
+    // Set the global reset manager
+    g_resetManager = resetManager_.get();
 }
 
 void GUIApp::setSolver(FemSolver* solver) {
@@ -623,35 +631,42 @@ void OnSolveButtonClicked(HWND hwnd) {
 }
 
 void OnResetButtonClicked(HWND hwnd) {
-    // Reset to default values
-    SetWindowTextW(g_appData.hLxEdit, L"1.0");
-    SetWindowTextW(g_appData.hLyEdit, L"1.0");
-    SetWindowTextW(g_appData.hNxEdit, L"20");
-    SetWindowTextW(g_appData.hNyEdit, L"20");
-    SetWindowTextW(g_appData.hA11Edit, L"1.0");
-    SetWindowTextW(g_appData.hA12Edit, L"0.0");
-    SetWindowTextW(g_appData.hA22Edit, L"1.0");
-    SetWindowTextW(g_appData.hB1Edit, L"0.0");
-    SetWindowTextW(g_appData.hB2Edit, L"0.0");
-    SetWindowTextW(g_appData.hCEdit, L"0.0");
-    SetWindowTextW(g_appData.hFEdit, L"1.0");
+    if (g_resetManager) {
+        // Use the reset manager to reset to defaults
+        g_resetManager->resetToDefaults();
 
-    // Reset boundary conditions
-    SetWindowTextW(g_appData.hWestValue, L"0.0");
-    SetWindowTextW(g_appData.hEastValue, L"0.0");
-    SetWindowTextW(g_appData.hSouthValue, L"0.0");
-    SetWindowTextW(g_appData.hNorthValue, L"0.0");
+        // Update the UI controls with the reset values
+        SetWindowTextW(g_appData.hLxEdit, L"1.0");
+        SetWindowTextW(g_appData.hLyEdit, L"1.0");
+        SetWindowTextW(g_appData.hNxEdit, L"20");
+        SetWindowTextW(g_appData.hNyEdit, L"20");
+        SetWindowTextW(g_appData.hA11Edit, L"1.0");
+        SetWindowTextW(g_appData.hA12Edit, L"0.0");
+        SetWindowTextW(g_appData.hA22Edit, L"1.0");
+        SetWindowTextW(g_appData.hB1Edit, L"0.0");
+        SetWindowTextW(g_appData.hB2Edit, L"0.0");
+        SetWindowTextW(g_appData.hCEdit, L"0.0");
+        SetWindowTextW(g_appData.hFEdit, L"1.0");
 
-    // Reset boundary condition types to Dirichlet
-    SendMessageW(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
-    SendMessageW(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
+        // Reset boundary conditions
+        SetWindowTextW(g_appData.hWestValue, L"0.0");
+        SetWindowTextW(g_appData.hEastValue, L"0.0");
+        SetWindowTextW(g_appData.hSouthValue, L"0.0");
+        SetWindowTextW(g_appData.hNorthValue, L"0.0");
 
-    // Reset preset to default
-    SendMessageW(g_appData.hPresetCombo, CB_SETCURSEL, 0, 0);
+        // Reset boundary condition types to Dirichlet
+        SendMessageW(g_appData.hWestBC, CB_SETCURSEL, 0, 0);
+        SendMessageW(g_appData.hEastBC, CB_SETCURSEL, 0, 0);
+        SendMessageW(g_appData.hSouthBC, CB_SETCURSEL, 0, 0);
+        SendMessageW(g_appData.hNorthBC, CB_SETCURSEL, 0, 0);
 
-    SetWindowTextW(g_appData.hStatus, L"Reset to defaults");
+        // Reset preset to default
+        SendMessageW(g_appData.hPresetCombo, CB_SETCURSEL, 0, 0);
+
+        SetWindowTextW(g_appData.hStatus, utf8_to_wstring(g_resetManager->getResetStatus()).c_str());
+    } else {
+        SetWindowTextW(g_appData.hStatus, L"Reset manager not initialized.");
+    }
 }
 
 void OnExportButtonClicked(HWND hwnd) {

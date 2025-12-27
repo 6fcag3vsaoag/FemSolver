@@ -6,6 +6,7 @@
 #include "VisualizationManager.h" // Include the visualization manager
 #include "SolutionManager.h" // Include the solution manager
 #include "ExportManager.h" // Include the export manager
+#include "ResetManager.h" // Include the reset manager
 #include <string>
 #include <memory>          // For std::unique_ptr
 
@@ -53,6 +54,9 @@ private:
 
     // Export manager instance
     std::unique_ptr<ExportManager> exportManager_;
+
+    // Reset manager instance
+    std::unique_ptr<ResetManager> resetManager_;
 
     // Methods to update GUI from solver
     friend class EllipticApp;  // Allow EllipticApp to access these private methods
