@@ -38,6 +38,9 @@ set(SOURCES
     "src/Localization.cpp"
     "src/PresetManager.cpp"
     "src/WindowEventHandler.cpp"
+    "src/VisualizationManager.cpp"
+    "src/SolutionManager.cpp"
+    "src/ExportManager.cpp"
 )
 
 # Список заголовочных файлов
@@ -58,6 +61,9 @@ set(HEADERS
     "include/PresetManager.h"
     "include/GUIAppTypes.h"
     "include/WindowEventHandler.h"
+    "include/VisualizationManager.h"
+    "include/SolutionManager.h"
+    "include/ExportManager.h"
 )
 
 # Добавьте все исходники в исполняемый файл проекта

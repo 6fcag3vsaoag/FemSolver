@@ -32,6 +32,9 @@ const wchar_t g_szClassName[] = L"FemSolverWindowClass";
 AppData g_appData;
 WNDPROC g_pfnOldVisualFrameProc = NULL;
 GdiVisualizer* g_currentGdiVisualizer = nullptr; // TEMPORARY: For global access until refactor
+VisualizationManager* g_visualizationManager = nullptr; // Global visualization manager instance
+SolutionManager* g_solutionManager = nullptr; // Global solution manager instance
+ExportManager* g_exportManager = nullptr; // Global export manager instance
 
 // Forward function declarations
 LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -103,11 +106,40 @@ GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
     // Initialize GDI Visualizer
     gdiVisualizer_ = std::make_unique<GdiVisualizer>();
     g_currentGdiVisualizer = gdiVisualizer_.get(); // TEMPORARY: Make it globally accessible
+
+    // Initialize Visualization Manager
+    visualizationManager_ = std::make_unique<VisualizationManager>();
+    visualizationManager_->initialize(gdiVisualizer_.get());
+
+    // Set the global visualization manager
+    g_visualizationManager = visualizationManager_.get();
+
+    // Initialize Solution Manager
+    solutionManager_ = std::make_unique<SolutionManager>();
+
+    // Set the global solution manager
+    g_solutionManager = solutionManager_.get();
+
+    // Initialize Export Manager
+    exportManager_ = std::make_unique<ExportManager>();
+
+    // Set the global export manager
+    g_exportManager = exportManager_.get();
 }
 
 void GUIApp::setSolver(FemSolver* solver) {
     coreSolver = solver;
     g_appData.solver = solver;
+
+    // Initialize the solution manager with the solver and app data
+    if (solutionManager_) {
+        solutionManager_->initialize(solver, &g_appData);
+    }
+
+    // Initialize the export manager with the solver and app data
+    if (exportManager_) {
+        exportManager_->initialize(solver, &g_appData);
+    }
 }
 
 void GUIApp::runWithSolver(FemSolver* solver) {
@@ -502,26 +534,20 @@ void OnSolveButtonClicked(HWND hwnd) {
     SetWindowTextW(g_appData.hStatus, L"Solving...");
 
     try {
-        // If we have a solver instance, use it
-        if (g_appData.solver) {
-            // Call the solver with the parameters from the GUI
-            EllipticApp* ellipticApp = g_appData.solver->getApp();
-            if (ellipticApp) {
-                // Solve the equation with the parameters obtained from GUI
-                ellipticApp->solveWithParameters(
-                    g_appData.Lx, g_appData.Ly, g_appData.Nx, g_appData.Ny,
-                    g_appData.a11Func, g_appData.a12Func, g_appData.a22Func,
-                    g_appData.b1Func, g_appData.b2Func, g_appData.cFunc, g_appData.fFunc,
-                    westBC, eastBC, southBC, northBC,
-                    westVal, eastVal, southVal, northVal
-                );
+        // Use the solution manager to solve the problem
+        if (g_solutionManager) {
+            bool success = g_solutionManager->solveWithParameters(
+                g_appData.Lx, g_appData.Ly, g_appData.Nx, g_appData.Ny,
+                g_appData.a11Func, g_appData.a12Func, g_appData.a22Func,
+                g_appData.b1Func, g_appData.b2Func, g_appData.cFunc, g_appData.fFunc,
+                westBC, eastBC, southBC, northBC,
+                westVal, eastVal, southVal, northVal
+            );
 
-                // Update status to show solution is computed
-                SetWindowTextW(g_appData.hStatus, L"Solution computed successfully!");
-
-                // Show solution information
-                const std::vector<double>& solution = ellipticApp->getSolution();
-                const Mesh& mesh = ellipticApp->getMesh();
+            if (success) {
+                // Get the solution and mesh from the solution manager
+                const std::vector<double>& solution = g_solutionManager->getSolution();
+                const Mesh& mesh = g_solutionManager->getMesh();
 
                 if (!solution.empty()) {
                     double min_val = *std::min_element(solution.begin(), solution.end());
@@ -530,11 +556,11 @@ void OnSolveButtonClicked(HWND hwnd) {
                     std::wostringstream woss;
                     woss << L"Solution computed: " << solution.size() << L" nodes, "
                          << L"Range: [" << min_val << L", " << max_val << L"]";
-                    SetWindowTextW(g_appData.hStatus, woss.str().c_str());
+                    SetWindowTextW(g_appData.hStatus, utf8_to_wstring(g_solutionManager->getSolutionStatus()).c_str());
 
-                    // Call GDI Visualizer to render the solution
-                    if (g_currentGdiVisualizer) {
-                        g_currentGdiVisualizer->render(mesh, solution, g_appData.Nx, g_appData.Ny, "Solution Visualization");
+                    // Call Visualization Manager to render the solution
+                    if (g_visualizationManager) {
+                        g_visualizationManager->renderSolution(mesh, solution, g_appData.Nx, g_appData.Ny, "Solution Visualization");
                     }
 
                     // Update the solution information panel with detailed information
@@ -570,13 +596,14 @@ void OnSolveButtonClicked(HWND hwnd) {
                     SetWindowTextW(g_appData.hSolutionInfo, solutionInfo.str().c_str());
                 }
             } else {
-                MessageBoxW(hwnd, L"Failed to access solver application.",
+                MessageBoxW(hwnd, L"Failed to solve the problem.",
                           L"Error", MB_OK | MB_ICONERROR);
+                SetWindowTextW(g_appData.hStatus, L"Failed to solve the problem");
             }
         } else {
-            MessageBoxW(hwnd, L"Solver not initialized. The application should be run from the main FemSolver instance.",
+            MessageBoxW(hwnd, L"Solution manager not initialized.",
                       L"Error", MB_OK | MB_ICONERROR);
-            SetWindowTextW(g_appData.hStatus, L"Solver not initialized");
+            SetWindowTextW(g_appData.hStatus, L"Solution manager not initialized");
         }
     } catch (const std::exception& e) {
         // Convert narrow string to wide string
@@ -630,94 +657,41 @@ void OnResetButtonClicked(HWND hwnd) {
 void OnExportButtonClicked(HWND hwnd) {
     SetWindowTextW(g_appData.hStatus, L"Exporting results...");
 
-    if (g_appData.solver) {
-        EllipticApp* ellipticApp = g_appData.solver->getApp();
-        if (ellipticApp) {
-            const std::vector<double>& solution = ellipticApp->getSolution();
-            const Mesh& mesh = ellipticApp->getMesh();
+    if (g_exportManager) {
+        // Show file dialog to get export filename
+        OPENFILENAMEW ofn;
+        wchar_t szFile[260] = L"";
 
-            if (!solution.empty()) {
-                // Export solution data to a file
-                OPENFILENAMEW ofn;
-                wchar_t szFile[260] = L"";
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = hwnd;
+        ofn.lpstrFile = szFile;
+        ofn.nMaxFile = sizeof(szFile) / sizeof(wchar_t);
+        ofn.lpstrFilter = L"Text Files\0*.txt\0All Files\0*.*\0";
+        ofn.nFilterIndex = 1;
+        ofn.lpstrFileTitle = NULL;
+        ofn.nMaxFileTitle = 0;
+        ofn.lpstrInitialDir = NULL;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_OVERWRITEPROMPT;
 
-                ZeroMemory(&ofn, sizeof(ofn));
-                ofn.lStructSize = sizeof(ofn);
-                ofn.hwndOwner = hwnd;
-                ofn.lpstrFile = szFile;
-                ofn.nMaxFile = sizeof(szFile) / sizeof(wchar_t);
-                ofn.lpstrFilter = L"Text Files\0*.txt\0All Files\0*.*\0";
-                ofn.nFilterIndex = 1;
-                ofn.lpstrFileTitle = NULL;
-                ofn.nMaxFileTitle = 0;
-                ofn.lpstrInitialDir = NULL;
-                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_OVERWRITEPROMPT;
+        if (GetSaveFileNameW(&ofn)) {
+            // Export using the export manager
+            std::string filename = wstring_to_utf8(std::wstring(ofn.lpstrFile));
+            bool success = g_exportManager->exportSolutionToFile(filename);
 
-                if (GetSaveFileNameW(&ofn)) {
-                    // Open file in binary mode to ensure UTF-8 output without locale interference
-                    std::ofstream outFile(ofn.lpstrFile, std::ios_base::binary);
-                    if (outFile.is_open()) {
-                        // Write UTF-8 BOM
-                        outFile.write("\xEF\xBB\xBF", 3);
-
-                        // Write solution data to file
-                        outFile << "# Finite Element Solution Data\n";
-                        outFile << "# Generated by FEM Solver\n";
-                        outFile << "# Domain: [0, " << g_appData.Lx << "] x [0, " << g_appData.Ly << "]\n";
-                        outFile << "# Mesh: " << g_appData.Nx << " x " << g_appData.Ny << " nodes\n";
-                        outFile << "# Coefficients:\n";
-                        outFile << "#   a11(x,y) = " << g_appData.a11Func << "\n";
-                        outFile << "#   a12(x,y) = " << g_appData.a12Func << "\n";
-                        outFile << "#   a22(x,y) = " << g_appData.a22Func << "\n";
-                        outFile << "#   b1(x,y) = " << g_appData.b1Func << "\n";
-                        outFile << "#   b2(x,y) = " << g_appData.b2Func << "\n";
-                        outFile << "#   c(x,y) = " << g_appData.cFunc << "\n";
-                        outFile << "#   f(x,y) = " << g_appData.fFunc << "\n";
-                        outFile << "\n";
-                        outFile << "# Node_ID\tX_coord\tY_coord\tSolution_Value\n";
-
-                        // Write node data with solution values
-                        size_t min_size = (mesh.nodes.size() < solution.size()) ? mesh.nodes.size() : solution.size();
-                        for (size_t i = 0; i < min_size; ++i) {
-                            outFile << i << "\t"
-                                   << mesh.nodes[i].first << "\t"
-                                   << mesh.nodes[i].second << "\t"
-                                   << solution[i] << "\n";
-                        }
-
-                        // Write element connectivity
-                        outFile << "\n# Element Connectivity\n";
-                        outFile << "# Element_ID\tNode1\tNode2\tNode3\n";
-                        for (size_t i = 0; i < mesh.elements.size(); ++i) {
-                            outFile << i << "\t"
-                                   << mesh.elements[i][0] << "\t"
-                                   << mesh.elements[i][1] << "\t"
-                                   << mesh.elements[i][2] << "\n";
-                        }
-
-                        outFile.close();
-
-                        SetWindowTextW(g_appData.hStatus, L"Results successfully exported!");
-                        MessageBoxW(hwnd, L"Results exported successfully to:\n", L"Export Complete", MB_OK | MB_ICONINFORMATION);
-                    } else {
-                        SetWindowTextW(g_appData.hStatus, L"Error: Could not open file for export.");
-                        MessageBoxW(hwnd, L"Error opening file for export.", L"Export Error", MB_OK | MB_ICONERROR);
-                    }
-                } else {
-                    SetWindowTextW(g_appData.hStatus, L"Export cancelled.");
-                }
+            if (success) {
+                SetWindowTextW(g_appData.hStatus, utf8_to_wstring(g_exportManager->getExportStatus()).c_str());
+                MessageBoxW(hwnd, L"Results exported successfully!", L"Export Complete", MB_OK | MB_ICONINFORMATION);
             } else {
-                MessageBoxW(hwnd, L"No solution data available to export. Please solve the problem first.",
-                          L"No Data", MB_OK | MB_ICONINFORMATION);
-                SetWindowTextW(g_appData.hStatus, L"No solution data to export. Solve first.");
+                SetWindowTextW(g_appData.hStatus, utf8_to_wstring(g_exportManager->getExportStatus()).c_str());
+                MessageBoxW(hwnd, utf8_to_wstring(g_exportManager->getExportStatus()).c_str(), L"Export Error", MB_OK | MB_ICONERROR);
             }
         } else {
-            MessageBoxW(hwnd, L"Cannot access solver application.", L"Error", MB_OK | MB_ICONERROR);
-            SetWindowTextW(g_appData.hStatus, L"Cannot access solver application.");
+            SetWindowTextW(g_appData.hStatus, L"Export cancelled.");
         }
     } else {
-        MessageBoxW(hwnd, L"Solver not initialized.", L"Error", MB_OK | MB_ICONERROR);
-        SetWindowTextW(g_appData.hStatus, L"Solver not initialized.");
+        MessageBoxW(hwnd, L"Export manager not initialized.", L"Error", MB_OK | MB_ICONERROR);
+        SetWindowTextW(g_appData.hStatus, L"Export manager not initialized.");
     }
 }
 
@@ -820,7 +794,7 @@ void LoadPreset(int presetIndex) {
     PresetManager::loadPreset(NULL, g_appData, presetIndex);  // hwnd is not used in the preset manager, so passing NULL
 
     // Clear any stored solution data and visualization
-    if (g_currentGdiVisualizer) {
-        g_currentGdiVisualizer->render(Mesh(), std::vector<double>(), 0, 0, "");
+    if (g_visualizationManager) {
+        g_visualizationManager->renderSolution(Mesh(), std::vector<double>(), 0, 0, "");
     }
 }

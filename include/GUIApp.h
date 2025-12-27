@@ -3,6 +3,9 @@
 
 #include "Types.h"
 #include "GdiVisualizer.h" // Include the concrete GDI visualizer
+#include "VisualizationManager.h" // Include the visualization manager
+#include "SolutionManager.h" // Include the solution manager
+#include "ExportManager.h" // Include the export manager
 #include <string>
 #include <memory>          // For std::unique_ptr
 
@@ -41,6 +44,15 @@ private:
 
     // GDI Visualizer instance
     std::unique_ptr<GdiVisualizer> gdiVisualizer_;
+
+    // Visualization manager instance
+    std::unique_ptr<VisualizationManager> visualizationManager_;
+
+    // Solution manager instance
+    std::unique_ptr<SolutionManager> solutionManager_;
+
+    // Export manager instance
+    std::unique_ptr<ExportManager> exportManager_;
 
     // Methods to update GUI from solver
     friend class EllipticApp;  // Allow EllipticApp to access these private methods
