@@ -10,7 +10,8 @@ DirectXVisualizer::DirectXVisualizer()
       vertexBuffer_(nullptr), indexBuffer_(nullptr), vertexCount_(0), indexCount_(0),
       currentNx_(0), currentNy_(0), hasSolution_(false),
       cameraRotationX_(-0.5f), cameraRotationY_(0.5f), cameraDistance_(5.0f),
-      cameraTargetX_(0.0f), cameraTargetY_(0.0f), cameraTargetZ_(0.0f) {
+      cameraTargetX_(0.0f), cameraTargetY_(0.0f), cameraTargetZ_(0.0f),
+      domainLx_(1.0f), domainLy_(1.0f), domainLz_(1.0f) { // Initialize domain dimensions
     // Initialize matrices
     worldMatrix_ = DirectX::XMMatrixIdentity();
     updateCameraMatrices();
@@ -512,9 +513,10 @@ bool DirectXVisualizer::createMeshBuffers(const Mesh& mesh, const std::vector<do
         return false;
     }
 
-    // Calculate the range of solution values for color mapping
+    // Calculate the range of solution values for color mapping and Z-axis
     double minVal = *std::min_element(solution.begin(), solution.end());
     double maxVal = *std::max_element(solution.begin(), solution.end());
+    domainLz_ = static_cast<float>(maxVal);
     double range = maxVal - minVal;
     if (range == 0.0) range = 1.0; // Avoid division by zero
 
@@ -522,7 +524,7 @@ bool DirectXVisualizer::createMeshBuffers(const Mesh& mesh, const std::vector<do
     std::vector<VertexPosColor> vertices;
     vertices.reserve(mesh.nodes.size());
 
-    // Calculate domain center for proper positioning
+    // Calculate domain center and dimensions for proper positioning
     double minX = std::numeric_limits<double>::max();
     double maxX = std::numeric_limits<double>::lowest();
     double minY = std::numeric_limits<double>::max();
@@ -534,6 +536,9 @@ bool DirectXVisualizer::createMeshBuffers(const Mesh& mesh, const std::vector<do
         minY = std::min(minY, node.second);
         maxY = std::max(maxY, node.second);
     }
+
+    domainLx_ = static_cast<float>(maxX - minX);
+    domainLy_ = static_cast<float>(maxY - minY);
 
     double centerX = (minX + maxX) / 2.0;
     double centerY = (minY + maxY) / 2.0;
@@ -726,26 +731,27 @@ void DirectXVisualizer::present() {
 void DirectXVisualizer::renderAxes() {
     if (!device_ || !context_) return;
 
-    // Define axis vertices (X-red, Y-green, Z-blue) - longer for better visibility
+    // Define axis vertices based on domain size with a 20% margin
+    float margin = 1.2f;
+    float x_len = (domainLx_ / 2.0f) * margin;
+    float y_len = domainLz_ * margin; // Use max solution value for Y-axis length
+    float z_len = (domainLy_ / 2.0f) * margin;
+
     std::vector<VertexPosColor> axisVertices = {
-        // X-axis (red) - positive direction
-        {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},  // Origin
-        {{2.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},  // End
+        // X-axis (red)
+        {{-x_len, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+        {{x_len, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
 
-        // Y-axis (green) - positive direction
-        {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},  // Origin
-        {{0.0f, 2.0f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},  // End
+        // Y-axis (green)
+        {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},
+        {{0.0f, y_len, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},
 
-        // Z-axis (blue) - positive direction
-        {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f}},  // Origin
-        {{0.0f, 0.0f, 2.0f}, {0.0f, 0.0f, 1.0f, 1.0f}}   // End
+        // Z-axis (blue)
+        {{0.0f, 0.0f, -z_len}, {0.0f, 0.0f, 1.0f, 1.0f}},
+        {{0.0f, 0.0f, z_len}, {0.0f, 0.0f, 1.0f, 1.0f}}
     };
 
-    std::vector<unsigned long> axisIndices = {
-        0, 1,  // X-axis
-        2, 3,  // Y-axis
-        4, 5   // Z-axis
-    };
+    std::vector<unsigned long> axisIndices = { 0, 1, 2, 3, 4, 5 };
 
     // Create temporary buffers for axes
     ID3D11Buffer* tempVertexBuffer = nullptr;
@@ -778,15 +784,14 @@ void DirectXVisualizer::renderAxes() {
         return;
     }
 
-    // Save current buffers
+    // Save current buffers and topology
     ID3D11Buffer* oldVertexBuffer = nullptr;
     ID3D11Buffer* oldIndexBuffer = nullptr;
-    UINT oldStride = 0;
-    UINT oldOffset = 0;
-
+    UINT oldStride, oldOffset;
+    D3D11_PRIMITIVE_TOPOLOGY oldTopology;
     context_->IAGetVertexBuffers(0, 1, &oldVertexBuffer, &oldStride, &oldOffset);
-    oldIndexBuffer = nullptr;
     context_->IAGetIndexBuffer(&oldIndexBuffer, nullptr, nullptr);
+    context_->IAGetPrimitiveTopology(&oldTopology);
 
     // Set axis buffers
     UINT stride = sizeof(VertexPosColor);
@@ -797,185 +802,98 @@ void DirectXVisualizer::renderAxes() {
 
     // Set constant buffer for axes
     ConstantBuffer cb;
-    cb.world = DirectX::XMMatrixTranspose(DirectX::XMMatrixIdentity()); // Use identity for axes so they stay at origin
+    cb.world = DirectX::XMMatrixTranspose(DirectX::XMMatrixIdentity());
     cb.view = DirectX::XMMatrixTranspose(viewMatrix_);
     cb.projection = DirectX::XMMatrixTranspose(projectionMatrix_);
-
     context_->UpdateSubresource(constantBuffer_, 0, nullptr, &cb, 0, 0);
-    context_->VSSetConstantBuffers(0, 1, &constantBuffer_);
-
-    // Set shaders for axes
-    context_->VSSetShader(vertexShader_, nullptr, 0);
-    context_->PSSetShader(pixelShader_, nullptr, 0);
-    context_->IASetInputLayout(inputLayout_);
 
     // Draw axes
-    context_->DrawIndexed(6, 0, 0);
+    context_->DrawIndexed(static_cast<UINT>(axisIndices.size()), 0, 0);
 
-    // Restore original buffers
+    // Restore original buffers and topology
     context_->IASetVertexBuffers(0, 1, &oldVertexBuffer, &oldStride, &oldOffset);
-    if (oldIndexBuffer) {
+    if(oldIndexBuffer) {
         context_->IASetIndexBuffer(oldIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+        oldIndexBuffer->Release();
     }
+    if(oldVertexBuffer) oldVertexBuffer->Release();
+    context_->IASetPrimitiveTopology(oldTopology);
 
     // Release temporary buffers
     tempVertexBuffer->Release();
-    if (tempIndexBuffer) tempIndexBuffer->Release();
-    if (oldVertexBuffer) oldVertexBuffer->Release();
-    if (oldIndexBuffer) oldIndexBuffer->Release();
+    tempIndexBuffer->Release();
 }
 
 void DirectXVisualizer::renderGrid() {
-    if (!device_ || !context_) return;
+    if (!device_ || !context_ || !hasSolution_) return;
 
-    // Create a grid that matches the domain size (Lx, Ly)
     std::vector<VertexPosColor> gridVertices;
-    std::vector<unsigned long> gridIndices;
+    
+    float halfLx = domainLx_ / 2.0f;
+    float halfLy = domainLy_ / 2.0f;
 
-    // Calculate domain size based on the stored mesh data
-    float domainX = 1.0f; // Default
-    float domainY = 1.0f; // Default
+    // Use currentNx_ and currentNy_ for grid lines
+    int nx = currentNx_ > 1 ? currentNx_ : 2;
+    int ny = currentNy_ > 1 ? currentNy_ : 2;
 
-    if (!currentMesh_.nodes.empty()) {
-        // Find the actual extent of the mesh
-        double minX = std::numeric_limits<double>::max();
-        double maxX = std::numeric_limits<double>::lowest();
-        double minY = std::numeric_limits<double>::max();
-        double maxY = std::numeric_limits<double>::lowest();
-
-        for (const auto& node : currentMesh_.nodes) {
-            minX = std::min(minX, node.first);
-            maxX = std::max(maxX, node.first);
-            minY = std::min(minY, node.second);
-            maxY = std::max(maxY, node.second);
-        }
-
-        domainX = static_cast<float>(maxX - minX);
-        domainY = static_cast<float>(maxY - minY);
-    }
-
-    const int gridLines = 20; // Number of grid lines in each direction
-
-    // Calculate center of the domain
-    float centerX = 0.0f;
-    float centerZ = 0.0f;
-
-    if (!currentMesh_.nodes.empty()) {
-        double minX = std::numeric_limits<double>::max();
-        double maxX = std::numeric_limits<double>::lowest();
-        double minY = std::numeric_limits<double>::max();
-        double maxY = std::numeric_limits<double>::lowest();
-
-        for (const auto& node : currentMesh_.nodes) {
-            minX = std::min(minX, node.first);
-            maxX = std::max(maxX, node.first);
-            minY = std::min(minY, node.second);
-            maxY = std::max(maxY, node.second);
-        }
-
-        centerX = static_cast<float>((minX + maxX) / 2.0);
-        centerZ = static_cast<float>((minY + maxY) / 2.0);
+    // Vertical lines (parallel to Z-axis)
+    for (int i = 0; i < nx; ++i) {
+        float x = -halfLx + (static_cast<float>(i) / (nx - 1)) * domainLx_;
+        gridVertices.push_back({{x, 0.0f, -halfLy}, {0.4f, 0.4f, 0.4f, 0.6f}});
+        gridVertices.push_back({{x, 0.0f, halfLy}, {0.4f, 0.4f, 0.4f, 0.6f}});
     }
 
     // Horizontal lines (parallel to X-axis)
-    for (int i = 0; i <= gridLines; i++) {
-        float z = (-domainY/2.0f + (static_cast<float>(i) / gridLines) * domainY) + centerZ;
-        float xStart = (-domainX/2.0f) + centerX;
-        float xEnd = (domainX/2.0f) + centerX;
-        gridVertices.push_back({{xStart, 0.0f, z}, {0.4f, 0.4f, 0.4f, 0.6f}}); // Light gray with transparency
-        gridVertices.push_back({{xEnd, 0.0f, z}, {0.4f, 0.4f, 0.4f, 0.6f}});
+    for (int i = 0; i < ny; ++i) {
+        float z = -halfLy + (static_cast<float>(i) / (ny - 1)) * domainLy_;
+        gridVertices.push_back({{-halfLx, 0.0f, z}, {0.4f, 0.4f, 0.4f, 0.6f}});
+        gridVertices.push_back({{halfLx, 0.0f, z}, {0.4f, 0.4f, 0.4f, 0.6f}});
     }
 
-    // Vertical lines (parallel to Z-axis)
-    for (int i = 0; i <= gridLines; i++) {
-        float x = (-domainX/2.0f + (static_cast<float>(i) / gridLines) * domainX) + centerX;
-        float zStart = (-domainY/2.0f) + centerZ;
-        float zEnd = (domainY/2.0f) + centerZ;
-        gridVertices.push_back({{x, 0.0f, zStart}, {0.4f, 0.4f, 0.4f, 0.6f}});
-        gridVertices.push_back({{x, 0.0f, zEnd}, {0.4f, 0.4f, 0.4f, 0.6f}});
-    }
+    if (gridVertices.empty()) return;
 
-    // Create indices
-    for (unsigned long i = 0; i < gridVertices.size(); i++) {
-        gridIndices.push_back(i);
-    }
-
-    // Create temporary buffers for grid
+    // Create temporary vertex buffer
     ID3D11Buffer* tempVertexBuffer = nullptr;
-    ID3D11Buffer* tempIndexBuffer = nullptr;
-
     D3D11_BUFFER_DESC vertexBufferDesc = {};
     vertexBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
     vertexBufferDesc.ByteWidth = sizeof(VertexPosColor) * static_cast<UINT>(gridVertices.size());
     vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    vertexBufferDesc.CPUAccessFlags = 0;
-
+    
     D3D11_SUBRESOURCE_DATA vertexData = {};
     vertexData.pSysMem = gridVertices.data();
 
     HRESULT result = device_->CreateBuffer(&vertexBufferDesc, &vertexData, &tempVertexBuffer);
     if (FAILED(result)) return;
-
-    D3D11_BUFFER_DESC indexBufferDesc = {};
-    indexBufferDesc.Usage = D3D11_USAGE_IMMUTABLE;
-    indexBufferDesc.ByteWidth = sizeof(unsigned long) * static_cast<UINT>(gridIndices.size());
-    indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-    indexBufferDesc.CPUAccessFlags = 0;
-
-    D3D11_SUBRESOURCE_DATA indexData = {};
-    indexData.pSysMem = gridIndices.data();
-
-    result = device_->CreateBuffer(&indexBufferDesc, &indexData, &tempIndexBuffer);
-    if (FAILED(result)) {
-        tempVertexBuffer->Release();
-        return;
-    }
-
-    // Save current buffers
+    
+    // Save current state
     ID3D11Buffer* oldVertexBuffer = nullptr;
-    ID3D11Buffer* oldIndexBuffer = nullptr;
-    UINT oldStride = 0;
-    UINT oldOffset = 0;
-
+    UINT oldStride, oldOffset;
+    D3D11_PRIMITIVE_TOPOLOGY oldTopology;
     context_->IAGetVertexBuffers(0, 1, &oldVertexBuffer, &oldStride, &oldOffset);
-    oldIndexBuffer = nullptr;
-    context_->IAGetIndexBuffer(&oldIndexBuffer, nullptr, nullptr);
+    context_->IAGetPrimitiveTopology(&oldTopology);
 
-    // Set grid buffers
+    // Set grid buffer and topology
     UINT stride = sizeof(VertexPosColor);
     UINT offset = 0;
     context_->IASetVertexBuffers(0, 1, &tempVertexBuffer, &stride, &offset);
-    context_->IASetIndexBuffer(tempIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
     context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
 
-    // Set constant buffer for grid
+    // Set constant buffer
     ConstantBuffer cb;
-    cb.world = DirectX::XMMatrixTranspose(DirectX::XMMatrixIdentity()); // Identity for grid so it stays in world space
+    cb.world = DirectX::XMMatrixTranspose(DirectX::XMMatrixIdentity());
     cb.view = DirectX::XMMatrixTranspose(viewMatrix_);
     cb.projection = DirectX::XMMatrixTranspose(projectionMatrix_);
-
     context_->UpdateSubresource(constantBuffer_, 0, nullptr, &cb, 0, 0);
-    context_->VSSetConstantBuffers(0, 1, &constantBuffer_);
-
-    // Set shaders for grid
-    context_->VSSetShader(vertexShader_, nullptr, 0);
-    context_->PSSetShader(pixelShader_, nullptr, 0);
-    context_->IASetInputLayout(inputLayout_);
 
     // Draw grid
-    context_->DrawIndexed(static_cast<UINT>(gridIndices.size()), 0, 0);
+    context_->Draw(static_cast<UINT>(gridVertices.size()), 0);
 
-    // Restore original buffers
+    // Restore state
     context_->IASetVertexBuffers(0, 1, &oldVertexBuffer, &oldStride, &oldOffset);
-    if (oldIndexBuffer) {
-        context_->IASetIndexBuffer(oldIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-    }
+    if(oldVertexBuffer) oldVertexBuffer->Release();
+    context_->IASetPrimitiveTopology(oldTopology);
 
-    // Release temporary buffers
     tempVertexBuffer->Release();
-    if (tempIndexBuffer) tempIndexBuffer->Release();
-    if (oldVertexBuffer) oldVertexBuffer->Release();
-    if (oldIndexBuffer) oldIndexBuffer->Release();
 }
 
 void DirectXVisualizer::renderLegend() {

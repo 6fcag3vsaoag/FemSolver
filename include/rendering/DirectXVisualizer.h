@@ -109,17 +109,21 @@ public:
         DirectX::XMMATRIX viewMatrix_;
         DirectX::XMMATRIX projectionMatrix_;
     
-        // Camera parameters
-        float cameraRotationX_;
-        float cameraRotationY_;
-        float cameraDistance_;
-        float cameraTargetX_;
-        float cameraTargetY_;
-        float cameraTargetZ_;
-    
-        // Initialize DirectX 11
-        bool initializeDirectX();
-    
+            // Camera parameters
+            float cameraRotationX_;
+            float cameraRotationY_;
+            float cameraDistance_;
+            float cameraTargetX_;
+            float cameraTargetY_;
+            float cameraTargetZ_;
+        
+            // Domain dimensions
+            float domainLx_;
+            float domainLy_;
+            float domainLz_; // To store max solution value for Y-axis scaling
+        
+            // Initialize DirectX 11
+            bool initializeDirectX();    
         // Create shaders
         bool createShaders();
     
