@@ -81,13 +81,14 @@ public:
         ID3D11DeviceContext* context_;
         IDXGISwapChain* swapChain_;
         ID3D11RenderTargetView* renderTargetView_;
-        ID3D11DepthStencilView* depthStencilView_;
-        ID3D11Texture2D* depthStencilBuffer_;
-    
-        // Shaders
-        ID3D11VertexShader* vertexShader_;
-        ID3D11PixelShader* pixelShader_;
-        ID3D11InputLayout* inputLayout_;
+            ID3D11DepthStencilView* depthStencilView_;
+            ID3D11Texture2D* depthStencilBuffer_;
+            ID3D11RasterizerState* rasterizerState_;
+            ID3D11RasterizerState* wireframeState_;
+        
+            // Shaders
+            ID3D11VertexShader* vertexShader_;
+            ID3D11PixelShader* pixelShader_;        ID3D11InputLayout* inputLayout_;
         ID3D11Buffer* constantBuffer_;
     
         // Mesh data

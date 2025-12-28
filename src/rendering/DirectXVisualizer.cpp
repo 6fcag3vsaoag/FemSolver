@@ -6,6 +6,7 @@
 DirectXVisualizer::DirectXVisualizer()
     : hwndTarget_(nullptr), device_(nullptr), context_(nullptr), swapChain_(nullptr),
       renderTargetView_(nullptr), depthStencilView_(nullptr), depthStencilBuffer_(nullptr),
+      rasterizerState_(nullptr), wireframeState_(nullptr), // Initialize states
       vertexShader_(nullptr), pixelShader_(nullptr), inputLayout_(nullptr), constantBuffer_(nullptr),
       vertexBuffer_(nullptr), indexBuffer_(nullptr), vertexCount_(0), indexCount_(0),
       currentNx_(0), currentNy_(0), hasSolution_(false),
@@ -19,6 +20,8 @@ DirectXVisualizer::DirectXVisualizer()
 
 DirectXVisualizer::~DirectXVisualizer() {
     // Release DirectX resources
+    if (rasterizerState_) rasterizerState_->Release();
+    if (wireframeState_) wireframeState_->Release();
     if (vertexBuffer_) vertexBuffer_->Release();
     if (indexBuffer_) indexBuffer_->Release();
     if (constantBuffer_) constantBuffer_->Release();
@@ -128,8 +131,17 @@ void DirectXVisualizer::render(const Mesh& mesh, const std::vector<double>& solu
 
     // Draw
     if (indexCount_ > 0) {
+        // Draw the solid mesh
+        context_->RSSetState(rasterizerState_);
+        context_->DrawIndexed(indexCount_, 0, 0);
+
+        // Draw the wireframe overlay
+        context_->RSSetState(wireframeState_);
         context_->DrawIndexed(indexCount_, 0, 0);
     }
+
+    // Reset to default state for other rendering
+    context_->RSSetState(rasterizerState_);
 
     // Render coordinate axes
     renderAxes();
@@ -336,51 +348,67 @@ bool DirectXVisualizer::initializeDirectX() {
     viewport.TopLeftY = 0;
     context_->RSSetViewports(1, &viewport);
 
+    // Create rasterizer states (solid and wireframe)
+    D3D11_RASTERIZER_DESC rasterDesc = {};
+    rasterDesc.FillMode = D3D11_FILL_SOLID;
+    rasterDesc.CullMode = D3D11_CULL_NONE; // Disable culling to prevent holes
+    rasterDesc.FrontCounterClockwise = false;
+    rasterDesc.DepthBias = 0;
+    rasterDesc.DepthBiasClamp = 0.0f;
+    rasterDesc.SlopeScaledDepthBias = 0.0f;
+    rasterDesc.DepthClipEnable = true;
+    rasterDesc.ScissorEnable = false;
+    rasterDesc.MultisampleEnable = false;
+    rasterDesc.AntialiasedLineEnable = false;
+    
+    result = device_->CreateRasterizerState(&rasterDesc, &rasterizerState_);
+    if (FAILED(result)) return false;
+
+    rasterDesc.FillMode = D3D11_FILL_WIREFRAME;
+    result = device_->CreateRasterizerState(&rasterDesc, &wireframeState_);
+    if (FAILED(result)) return false;
+
+    context_->RSSetState(rasterizerState_);
+
     return true;
 }
 
 bool DirectXVisualizer::createShaders() {
     // Simple vertex shader
     const char* vertexShaderCode =
-        "cbuffer ConstantBuffer : register(b0) \
-        { \
-            matrix world : packoffset(c0); \
-            matrix view : packoffset(c4); \
-            matrix projection : packoffset(c8); \
-        } \
-        struct VS_INPUT \
-        { \
-            float3 pos : POSITION; \
-            float4 color : COLOR0; \
-        }; \
-        struct VS_OUTPUT \
-        { \
-            float4 pos : SV_POSITION; \
-            float4 color : COLOR0; \
-        }; \
-        VS_OUTPUT main(VS_INPUT input) \
-        { \
-            VS_OUTPUT output; \
-            float4 pos = float4(input.pos, 1.0f); \
-            pos = mul(pos, world); \
-            pos = mul(pos, view); \
-            pos = mul(pos, projection); \
-            output.pos = pos; \
-            output.color = input.color; \
-            return output; \
-        }";
+        "cbuffer ConstantBuffer : register(b0) {"
+        "    matrix world;"
+        "    matrix view;"
+        "    matrix projection;"
+        "}"
+        "struct VS_INPUT {"
+        "    float3 pos : POSITION;"
+        "    float4 color : COLOR0;"
+        "};"
+        "struct VS_OUTPUT {"
+        "    float4 pos : SV_POSITION;"
+        "    float4 color : COLOR0;"
+        "};"
+        "VS_OUTPUT main(VS_INPUT input) {"
+        "    VS_OUTPUT output;"
+        "    float4 pos = float4(input.pos, 1.0f);"
+        "    pos = mul(pos, world);"
+        "    pos = mul(pos, view);"
+        "    pos = mul(pos, projection);"
+        "    output.pos = pos;"
+        "    output.color = input.color;"
+        "    return output;"
+        "}";
 
     // Simple pixel shader
     const char* pixelShaderCode =
-        "struct PS_INPUT \
-        { \
-            float4 pos : SV_POSITION; \
-            float4 color : COLOR0; \
-        }; \
-        float4 main(PS_INPUT input) : SV_TARGET \
-        { \
-            return input.color; \
-        }";
+        "struct PS_INPUT {"
+        "    float4 pos : SV_POSITION;"
+        "    float4 color : COLOR0;"
+        "};"
+        "float4 main(PS_INPUT input) : SV_TARGET {"
+        "    return input.color;"
+        "}";
 
     ID3DBlob* vertexShaderBlob = nullptr;
     ID3DBlob* pixelShaderBlob = nullptr;
@@ -456,40 +484,21 @@ bool DirectXVisualizer::createShaders() {
         return false;
     }
 
-    // Create input layout - we need to compile the vertex shader first to get the bytecode
-    ID3DBlob* tempVertexShaderBlob = nullptr;
-    result = D3DCompile(
-        vertexShaderCode,
-        strlen(vertexShaderCode),
-        nullptr,
-        nullptr,
-        nullptr,
-        "main",
-        "vs_4_0",
-        0,
-        0,
-        &tempVertexShaderBlob,
-        nullptr
+    // Create input layout
+    D3D11_INPUT_ELEMENT_DESC layout[] = {
+        { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+        { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+    };
+
+    UINT numElements = ARRAYSIZE(layout);
+
+    result = device_->CreateInputLayout(
+        layout,
+        numElements,
+        vertexShaderBlob->GetBufferPointer(),
+        vertexShaderBlob->GetBufferSize(),
+        &inputLayout_
     );
-
-    if (SUCCEEDED(result)) {
-        D3D11_INPUT_ELEMENT_DESC layout[] = {
-            { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-            { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
-        };
-
-        UINT numElements = ARRAYSIZE(layout);
-
-        result = device_->CreateInputLayout(
-            layout,
-            numElements,
-            tempVertexShaderBlob->GetBufferPointer(),
-            tempVertexShaderBlob->GetBufferSize(),
-            &inputLayout_
-        );
-
-        tempVertexShaderBlob->Release();
-    }
 
     vertexShaderBlob->Release();
     pixelShaderBlob->Release();
@@ -500,7 +509,7 @@ bool DirectXVisualizer::createShaders() {
 bool DirectXVisualizer::createConstantBuffer() {
     D3D11_BUFFER_DESC bufferDesc = {};
     bufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    bufferDesc.ByteWidth = sizeof(ConstantBuffer); // Size of the constant buffer structure
+    bufferDesc.ByteWidth = sizeof(ConstantBuffer);
     bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     bufferDesc.CPUAccessFlags = 0;
 
@@ -543,9 +552,10 @@ bool DirectXVisualizer::createMeshBuffers(const Mesh& mesh, const std::vector<do
     double centerX = (minX + maxX) / 2.0;
     double centerY = (minY + maxY) / 2.0;
 
-    // Update camera target to center of the domain
-    cameraTargetX_ = static_cast<float>(centerX);
-    cameraTargetZ_ = static_cast<float>(centerY);
+    // Update camera target to the center of the now-centered mesh
+    cameraTargetX_ = 0.0f;
+    cameraTargetZ_ = 0.0f;
+    cameraTargetY_ = static_cast<float>((minVal + maxVal) / 2.0);
 
     for (size_t i = 0; i < mesh.nodes.size(); ++i) {
         VertexPosColor vertex;
