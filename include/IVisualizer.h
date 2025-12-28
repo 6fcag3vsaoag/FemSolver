@@ -32,6 +32,48 @@ public:
      * @param title An optional title for the visualization.
      */
     virtual void render(const Mesh& mesh, const std::vector<double>& solution, int Nx, int Ny, const std::string& title) = 0;
+
+    /**
+     * @brief Triggers a manual render update (useful for continuous rendering).
+     */
+    virtual void render() = 0;
+
+    /**
+     * @brief Resizes the visualization when the window is resized.
+     * @param width New width of the window.
+     * @param height New height of the window.
+     */
+    virtual void resize(int width, int height) = 0;
+
+    /**
+     * @brief Handles mouse input for camera control.
+     * @param mouseX X coordinate of the mouse.
+     * @param mouseY Y coordinate of the mouse.
+     * @param leftButton Whether the left mouse button is pressed.
+     * @param rightButton Whether the right mouse button is pressed.
+     */
+    virtual void handleMouseInput(int mouseX, int mouseY, bool leftButton, bool rightButton) = 0;
+
+    /**
+     * @brief Handles mouse wheel input for zoom control.
+     * @param delta Mouse wheel delta.
+     */
+    virtual void handleMouseWheel(int delta) = 0;
+
+    /**
+     * @brief Renders coordinate axes.
+     */
+    virtual void renderAxes() = 0;
+
+    /**
+     * @brief Renders grid.
+     */
+    virtual void renderGrid() = 0;
+
+    /**
+     * @brief Renders legend for solution values.
+     */
+    virtual void renderLegend() = 0;
 };
 
 #endif // IVISUALIZER_H

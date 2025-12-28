@@ -152,3 +152,39 @@ void GdiVisualizer::drawInternal(HDC hdc, const RECT& rect) {
         DrawTextW(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
     }
 }
+
+void GdiVisualizer::render() {
+    // For GDI, this is a no-op since rendering happens in response to WM_PAINT
+    // We can trigger a repaint if needed
+    if (hwndTarget_) {
+        InvalidateRect(hwndTarget_, NULL, TRUE);
+        UpdateWindow(hwndTarget_);
+    }
+}
+
+void GdiVisualizer::resize(int width, int height) {
+    // For GDI, no special resize handling is needed
+    // The next paint operation will automatically use the new window size
+    if (hwndTarget_) {
+        InvalidateRect(hwndTarget_, NULL, TRUE);
+        UpdateWindow(hwndTarget_);
+    }
+}
+
+void GdiVisualizer::handleMouseInput(int mouseX, int mouseY, bool leftButton, bool rightButton) {
+    // For GDI visualizer, mouse input handling is not applicable
+    // Just trigger a repaint to ensure the display is updated
+    if (hwndTarget_) {
+        InvalidateRect(hwndTarget_, NULL, TRUE);
+        UpdateWindow(hwndTarget_);
+    }
+}
+
+void GdiVisualizer::handleMouseWheel(int delta) {
+    // For GDI visualizer, mouse wheel handling is not applicable
+    // Just trigger a repaint to ensure the display is updated
+    if (hwndTarget_) {
+        InvalidateRect(hwndTarget_, NULL, TRUE);
+        UpdateWindow(hwndTarget_);
+    }
+}

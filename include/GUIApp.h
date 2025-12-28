@@ -2,7 +2,7 @@
 #define GUIAPP_H
 
 #include "Types.h"
-#include "GdiVisualizer.h" // Include the concrete GDI visualizer
+#include "IVisualizer.h" // Include the visualizer interface
 #include "VisualizationManager.h" // Include the visualization manager
 #include "SolutionManager.h" // Include the solution manager
 #include "ExportManager.h" // Include the export manager
@@ -43,8 +43,8 @@ private:
     // For now, we'll store a reference to the core solver
     class FemSolver* coreSolver;
 
-    // GDI Visualizer instance
-    std::unique_ptr<GdiVisualizer> gdiVisualizer_;
+    // Current visualizer instance (can be 2D or 3D)
+    std::unique_ptr<IVisualizer> visualizer_;
 
     // Visualization manager instance
     std::unique_ptr<VisualizationManager> visualizationManager_;

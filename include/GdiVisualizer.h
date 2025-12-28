@@ -32,6 +32,48 @@ public:
      */
     void render(const Mesh& mesh, const std::vector<double>& solution, int Nx, int Ny, const std::string& title) override;
 
+    /**
+     * @brief Triggers a manual render update (useful for continuous rendering).
+     */
+    void render() override;
+
+    /**
+     * @brief Resizes the visualization when the window is resized.
+     * @param width New width of the window.
+     * @param height New height of the window.
+     */
+    void resize(int width, int height) override;
+
+    /**
+     * @brief Handles mouse input for camera control.
+     * @param mouseX X coordinate of the mouse.
+     * @param mouseY Y coordinate of the mouse.
+     * @param leftButton Whether the left mouse button is pressed.
+     * @param rightButton Whether the right mouse button is pressed.
+     */
+    void handleMouseInput(int mouseX, int mouseY, bool leftButton, bool rightButton) override;
+
+    /**
+     * @brief Handles mouse wheel input for zoom control.
+     * @param delta Mouse wheel delta.
+     */
+    void handleMouseWheel(int delta) override;
+
+    /**
+     * @brief Renders coordinate axes.
+     */
+    void renderAxes() override {}
+
+    /**
+     * @brief Renders grid.
+     */
+    void renderGrid() override {}
+
+    /**
+     * @brief Renders legend for solution values.
+     */
+    void renderLegend() override {}
+
     // This method is called by the WNDPROC to perform the actual drawing
     void drawInternal(HDC hdc, const RECT& rect);
 

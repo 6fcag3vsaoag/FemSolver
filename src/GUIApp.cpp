@@ -1,12 +1,12 @@
 #include "GUIApp.h"
 #include "FemSolver.h"
 #include "EllipticApp.h"
-#include "GdiVisualizer.h"
 #include "StringUtils.h"
 #include "Localization.h" // Include the new localization module
 #include "PresetManager.h" // Include the new preset manager module
 #include "GUIAppTypes.h" // Include the GUI app types module
 #include "WindowEventHandler.h" // Include the window event handler module
+#include "VisualizationFactory.h" // Include the visualization factory
 #include <iostream>
 #include <stdexcept>
 #include <clocale>
@@ -31,7 +31,7 @@ const wchar_t g_szClassName[] = L"FemSolverWindowClass";
 
 AppData g_appData;
 WNDPROC g_pfnOldVisualFrameProc = NULL;
-GdiVisualizer* g_currentGdiVisualizer = nullptr; // TEMPORARY: For global access until refactor
+IVisualizer* g_currentVisualizer = nullptr; // For global access to current visualizer
 VisualizationManager* g_visualizationManager = nullptr; // Global visualization manager instance
 SolutionManager* g_solutionManager = nullptr; // Global solution manager instance
 ExportManager* g_exportManager = nullptr; // Global export manager instance
@@ -40,7 +40,7 @@ ResetManager* g_resetManager = nullptr; // Global reset manager instance
 // Forward function declarations
 LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-void CreateControls(HWND hwnd, GdiVisualizer* visualizer);
+void CreateControls(HWND hwnd, IVisualizer* visualizer);
 void OnSolveButtonClicked(HWND hwnd);
 void OnResetButtonClicked(HWND hwnd);
 void OnExportButtonClicked(HWND hwnd);
@@ -55,28 +55,91 @@ LRESULT CALLBACK VisualFrameWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
     switch (msg) {
         case WM_PAINT:
         {
+            // For DirectX, we don't handle WM_PAINT directly since DirectX manages its own rendering
+            // Instead, we would trigger DirectX rendering through a timer or other mechanism
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hwnd, &ps);
-
-            RECT rect;
-            GetClientRect(hwnd, &rect);
-
-            // Get the GdiVisualizer instance from window user data
-            GdiVisualizer* visualizer = reinterpret_cast<GdiVisualizer*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
-            if (visualizer) {
-                visualizer->drawInternal(hdc, rect);
-            } else {
-                // Fallback drawing if visualizer not set up (shouldn't happen)
-                HBRUSH bgBrush = CreateSolidBrush(RGB(240, 240, 240));
-                FillRect(hdc, &rect, bgBrush);
-                DeleteObject(bgBrush);
-                SetTextColor(hdc, RGB(128, 128, 128));
-                std::wstring placeholder = L"Visualizer not initialized.";
-                RECT placeholderRect = {10, 10, rect.right - 10, rect.bottom - 10};
-                DrawTextW(hdc, placeholder.c_str(), -1, &placeholderRect, DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX);
-            }
-
+            // Just clear the paint struct
             EndPaint(hwnd, &ps);
+
+            // Trigger rendering for the current visualizer after painting
+            if (g_currentVisualizer) {
+                g_currentVisualizer->render();
+            }
+            return 0;
+        }
+        case WM_SIZE:
+        {
+            // Handle window resize for DirectX
+            int width = LOWORD(lParam);
+            int height = HIWORD(lParam);
+
+            // If we have a visualizer, resize it
+            if (g_currentVisualizer) {
+                g_currentVisualizer->resize(width, height);
+            }
+            return 0;
+        }
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+        {
+            // Capture mouse for camera control
+            SetCapture(hwnd);
+
+            int x = LOWORD(lParam);
+            int y = HIWORD(lParam);
+
+            bool leftButton = (wParam & MK_LBUTTON) != 0;
+            bool rightButton = (wParam & MK_RBUTTON) != 0;
+
+            if (g_currentVisualizer) {
+                g_currentVisualizer->handleMouseInput(x, y, leftButton, rightButton);
+
+                // Force a redraw to reflect the camera changes
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+        }
+        case WM_MOUSEMOVE:
+        {
+            // Check if mouse buttons are pressed for camera control
+            int x = LOWORD(lParam);
+            int y = HIWORD(lParam);
+
+            bool leftButton = (wParam & MK_LBUTTON) != 0;
+            bool rightButton = (wParam & MK_RBUTTON) != 0;
+
+            if (leftButton || rightButton) {
+                if (g_currentVisualizer) {
+                    g_currentVisualizer->handleMouseInput(x, y, leftButton, rightButton);
+
+                    // Force a redraw to reflect the camera changes
+                    InvalidateRect(hwnd, NULL, FALSE);
+                }
+            }
+            return 0;
+        }
+        case WM_LBUTTONUP:
+        case WM_RBUTTONUP:
+        {
+            // Release mouse capture
+            ReleaseCapture();
+            return 0;
+        }
+        case WM_MOUSEWHEEL:
+        {
+            int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+
+            if (g_currentVisualizer) {
+                g_currentVisualizer->handleMouseWheel(delta);
+
+                // Force a redraw to reflect the camera changes
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+        }
+        case WM_DESTROY:
+        {
             return 0;
         }
     }
@@ -104,13 +167,13 @@ GUIApp::GUIApp() : mainWindow(nullptr), coreSolver(nullptr) {
     g_appData.cFunc = "0.0";
     g_appData.fFunc = "1.0";
 
-    // Initialize GDI Visualizer
-    gdiVisualizer_ = std::make_unique<GdiVisualizer>();
-    g_currentGdiVisualizer = gdiVisualizer_.get(); // TEMPORARY: Make it globally accessible
+    // Initialize DirectX Visualizer (instead of GDI Visualizer)
+    visualizer_ = VisualizationFactory::createVisualizer(VisualizationType::Direct3D);
+    g_currentVisualizer = visualizer_.get(); // Set global access to current visualizer
 
-    // Initialize Visualization Manager
+    // Initialize Visualization Manager with the DirectX visualizer
     visualizationManager_ = std::make_unique<VisualizationManager>();
-    visualizationManager_->initialize(gdiVisualizer_.get());
+    visualizationManager_->initialize(visualizer_.get());
 
     // Set the global visualization manager
     g_visualizationManager = visualizationManager_.get();
@@ -226,7 +289,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return WindowEventHandler::WndProc(hwnd, msg, wParam, lParam);
 }
 
-void CreateControls(HWND hwnd, GdiVisualizer* visualizer) {
+void CreateControls(HWND hwnd, IVisualizer* visualizer) {
     // Get window dimensions
     RECT rect;
     GetClientRect(hwnd, &rect);
@@ -460,10 +523,12 @@ void CreateControls(HWND hwnd, GdiVisualizer* visualizer) {
 
     // Subclass the visual frame to handle its painting
     g_pfnOldVisualFrameProc = (WNDPROC)SetWindowLongPtr(g_appData.hVisualFrame, GWLP_WNDPROC, (LONG_PTR)VisualFrameWndProc);
-    SetWindowLongPtr(g_appData.hVisualFrame, GWLP_USERDATA, (LONG_PTR)visualizer); // Store GdiVisualizer pointer
+    SetWindowLongPtr(g_appData.hVisualFrame, GWLP_USERDATA, (LONG_PTR)visualizer); // Store IVisualizer pointer
 
     // Set the visualizer's window handle
-    visualizer->setWindowHandle(g_appData.hVisualFrame);
+    if (visualizer) {
+        visualizer->setWindowHandle(g_appData.hVisualFrame);
+    }
 
     // Status bar at the bottom - adjusted for the solution info panel
     g_appData.hStatus = CreateWindowW(L"Static", getLanguageContext().getStatusReady(),
@@ -569,6 +634,12 @@ void OnSolveButtonClicked(HWND hwnd) {
                     // Call Visualization Manager to render the solution
                     if (g_visualizationManager) {
                         g_visualizationManager->renderSolution(mesh, solution, g_appData.Nx, g_appData.Ny, "Solution Visualization");
+
+                        // Force a repaint of the visualization window to trigger DirectX rendering
+                        if (g_appData.hVisualFrame) {
+                            InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
+                            UpdateWindow(g_appData.hVisualFrame);
+                        }
                     }
 
                     // Update the solution information panel with detailed information
@@ -811,5 +882,25 @@ void LoadPreset(int presetIndex) {
     // Clear any stored solution data and visualization
     if (g_visualizationManager) {
         g_visualizationManager->renderSolution(Mesh(), std::vector<double>(), 0, 0, "");
+    }
+}
+
+void GUIApp::updateGUIVisualization() {
+    if (visualizationManager_ && g_appData.solver) {
+        // Get the current solution from the solver
+        EllipticApp* ellipticApp = g_appData.solver->getApp();
+        if (ellipticApp) {
+            const std::vector<double>& solution = ellipticApp->getSolution();
+            const Mesh& mesh = ellipticApp->getMesh();
+
+            // Update visualization with the current solution
+            visualizationManager_->updateVisualization(g_appData, mesh, solution);
+
+            // Force a repaint of the visualization window to trigger DirectX rendering
+            if (g_appData.hVisualFrame) {
+                InvalidateRect(g_appData.hVisualFrame, NULL, TRUE);
+                UpdateWindow(g_appData.hVisualFrame);
+            }
+        }
     }
 }

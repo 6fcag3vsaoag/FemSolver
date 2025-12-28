@@ -1,5 +1,4 @@
 #include "../include/VisualizationManager.h"
-#include "../include/GdiVisualizer.h"
 #include <windows.h>
 
 // Constructor
@@ -8,11 +7,11 @@ VisualizationManager::VisualizationManager() : m_visualizer(nullptr) {
 
 // Destructor
 VisualizationManager::~VisualizationManager() {
-    // Clean up if needed
+    // Clean up if needed - note: we don't own the visualizer, so don't delete it here
 }
 
-// Initialize visualization with a GdiVisualizer instance
-void VisualizationManager::initialize(GdiVisualizer* visualizer) {
+// Initialize visualization with an IVisualizer instance
+void VisualizationManager::initialize(IVisualizer* visualizer) {
     m_visualizer = visualizer;
 }
 
@@ -28,7 +27,7 @@ void VisualizationManager::updateVisualization(AppData& appData, const Mesh& mes
     if (m_visualizer) {
         // Update the visualizer with the new data
         m_visualizer->render(mesh, solution, appData.Nx, appData.Ny, "Solution Visualization");
-        
+
         // Optionally update the visualization frame window
         if (appData.hVisualFrame) {
             InvalidateRect(appData.hVisualFrame, NULL, TRUE);
@@ -45,6 +44,11 @@ bool VisualizationManager::exportVisualization(const std::string& filename) {
 }
 
 // Get the current visualizer instance
-GdiVisualizer* VisualizationManager::getVisualizer() const {
+IVisualizer* VisualizationManager::getVisualizer() const {
     return m_visualizer;
+}
+
+// Set a new visualizer instance
+void VisualizationManager::setVisualizer(IVisualizer* visualizer) {
+    m_visualizer = visualizer;
 }

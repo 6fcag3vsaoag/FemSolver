@@ -1,9 +1,11 @@
 #include "../include/WindowEventHandler.h"
 #include "../include/Localization.h"
 #include "../include/PresetManager.h"
-#include "../include/GdiVisualizer.h"
+#include "../include/IVisualizer.h"
+#include "../include/rendering/DirectXVisualizer.h" // For dynamic_cast
 #include "../include/StringUtils.h"
 #include <commctrl.h>
+#include <windowsx.h> // For GET_X_LPARAM, GET_Y_LPARAM
 #include <string>
 #include <sstream>
 #include <fstream>
@@ -15,7 +17,7 @@
 AppData* WindowEventHandler::s_appData = nullptr;
 
 // Forward declarations for functions that will be defined in GUIApp.cpp
-extern GdiVisualizer* g_currentGdiVisualizer; // Global visualizer instance
+extern IVisualizer* g_currentVisualizer; // Global visualizer instance
 extern void OnSolveButtonClicked(HWND hwnd);
 extern void OnResetButtonClicked(HWND hwnd);
 extern void OnExportButtonClicked(HWND hwnd);
@@ -23,7 +25,7 @@ extern void OnPresetHelpClicked(HWND hwnd);
 extern void OnPresetChanged(HWND hwnd, int presetIndex);
 extern void UpdateLanguageStrings(HWND hwnd);
 extern void SwitchLanguage();
-extern void CreateControls(HWND hwnd, GdiVisualizer* visualizer);
+extern void CreateControls(HWND hwnd, IVisualizer* visualizer);
 
 // Initialize the application data
 void WindowEventHandler::setAppData(AppData* appData) {
@@ -41,9 +43,14 @@ LRESULT CALLBACK WindowEventHandler::WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 
+    // Capture mouse state for dragging
+    static bool isDragging = false;
+    static int lastMouseX = 0;
+    static int lastMouseY = 0;
+
     switch(msg) {
         case WM_CREATE:
-            CreateControls(hwnd, g_currentGdiVisualizer); // Pass the global GdiVisualizer instance
+            CreateControls(hwnd, g_currentVisualizer); // Pass the global IVisualizer instance
             break;
 
         case WM_COMMAND:
@@ -84,6 +91,53 @@ LRESULT CALLBACK WindowEventHandler::WndProc(HWND hwnd, UINT msg, WPARAM wParam,
                 LPMINMAXINFO lpMMI = (LPMINMAXINFO)lParam;
                 lpMMI->ptMinTrackSize.x = 1000;  // Minimum width for proper layout
                 lpMMI->ptMinTrackSize.y = 800;   // Increased minimum height for proper layout with extended solution panel
+            }
+            break;
+
+        case WM_LBUTTONDOWN:
+            SetCapture(hwnd);
+            isDragging = true;
+            lastMouseX = GET_X_LPARAM(lParam);
+            lastMouseY = GET_Y_LPARAM(lParam);
+            break;
+
+        case WM_LBUTTONUP:
+            ReleaseCapture();
+            isDragging = false;
+            break;
+
+        case WM_RBUTTONDOWN:
+            SetCapture(hwnd);
+            isDragging = true;
+            lastMouseX = GET_X_LPARAM(lParam);
+            lastMouseY = GET_Y_LPARAM(lParam);
+            break;
+
+        case WM_RBUTTONUP:
+            ReleaseCapture();
+            isDragging = false;
+            break;
+
+        case WM_MOUSEMOVE:
+            if (isDragging) {
+                int mouseX = GET_X_LPARAM(lParam);
+                int mouseY = GET_Y_LPARAM(lParam);
+
+                bool leftButton = (wParam & MK_LBUTTON) != 0;
+                bool rightButton = (wParam & MK_RBUTTON) != 0;
+
+                if (auto dxVis = dynamic_cast<DirectXVisualizer*>(g_currentVisualizer)) {
+                    dxVis->handleMouseInput(mouseX, mouseY, leftButton, rightButton);
+                }
+            }
+            break;
+
+        case WM_MOUSEWHEEL:
+            {
+                int delta = GET_WHEEL_DELTA_WPARAM(wParam); // Corrected: wParam instead of wPram
+                if (auto dxVis = dynamic_cast<DirectXVisualizer*>(g_currentVisualizer)) {
+                    dxVis->handleMouseWheel(delta);
+                }
             }
             break;
 
