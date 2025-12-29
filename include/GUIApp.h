@@ -2,8 +2,13 @@
 #define GUIAPP_H
 
 #include "Types.h"
+#include "IVisualizer.h" // Include the visualizer interface
+#include "VisualizationManager.h" // Include the visualization manager
+#include "SolutionManager.h" // Include the solution manager
+#include "ExportManager.h" // Include the export manager
+#include "ResetManager.h" // Include the reset manager
 #include <string>
-#include <memory>
+#include <memory>          // For std::unique_ptr
 
 // Forward declaration of FemSolver (to avoid circular includes)
 class FemSolver;
@@ -37,6 +42,21 @@ private:
 
     // For now, we'll store a reference to the core solver
     class FemSolver* coreSolver;
+
+    // Current visualizer instance (can be 2D or 3D)
+    std::unique_ptr<IVisualizer> visualizer_;
+
+    // Visualization manager instance
+    std::unique_ptr<VisualizationManager> visualizationManager_;
+
+    // Solution manager instance
+    std::unique_ptr<SolutionManager> solutionManager_;
+
+    // Export manager instance
+    std::unique_ptr<ExportManager> exportManager_;
+
+    // Reset manager instance
+    std::unique_ptr<ResetManager> resetManager_;
 
     // Methods to update GUI from solver
     friend class EllipticApp;  // Allow EllipticApp to access these private methods

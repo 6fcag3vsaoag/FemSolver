@@ -78,6 +78,38 @@ void EllipticFEMSolver::applyBoundaryConditions(
     const Mesh& mesh,
     const std::map<std::string, BoundaryConditionData>& boundaryConditions
 ) {
+    const int nNodes = static_cast<int>(mesh.nodes.size());
+    std::vector<bool> isDirichletNode(nNodes, false);
+    std::vector<double> dirichletValues(nNodes, 0.0);
+
+    // First, identify all Dirichlet nodes and their values
+    for (const auto& pair : boundaryConditions) {
+        const BoundaryConditionData& bcData = pair.second;
+        if (bcData.type == "dirichlet") {
+            auto boundaryIt = mesh.boundaries.find(pair.first);
+            if (boundaryIt != mesh.boundaries.end()) {
+                for (int nodeIdx : boundaryIt->second) {
+                    isDirichletNode[nodeIdx] = true;
+                    double x = mesh.nodes[nodeIdx].first;
+                    double y = mesh.nodes[nodeIdx].second;
+                    dirichletValues[nodeIdx] = bcData.value_func ? bcData.value_func(x, y) : bcData.value;
+                }
+            }
+        }
+    }
+
+    // Modify the right-hand side (F_global) for Dirichlet conditions ("lifting")
+    for (int i = 0; i < nNodes; ++i) {
+        if (!isDirichletNode[i]) {
+            for (int j = 0; j < nNodes; ++j) {
+                if (isDirichletNode[j]) {
+                    F_global[i] -= K_global[i][j] * dirichletValues[j];
+                }
+            }
+        }
+    }
+
+    // Now, modify the matrix and RHS for Dirichlet nodes and apply Neumann conditions
     for (const auto& pair : boundaryConditions) {
         const std::string& boundaryName = pair.first;
         const BoundaryConditionData& bcData = pair.second;
@@ -89,31 +121,24 @@ void EllipticFEMSolver::applyBoundaryConditions(
 
         if (bcData.type == "dirichlet") {
             for (int nodeIdx : boundaryNodes) {
-                double x = mesh.nodes[nodeIdx].first;
-                double y = mesh.nodes[nodeIdx].second;
-                double g_val = bcData.value_func ? bcData.value_func(x, y) : bcData.value;
-
-                // Set row and column to zero, diagonal to 1
-                for (size_t j = 0; j < K_global[nodeIdx].size(); ++j) {
+                // Zero out the row and column
+                for (int j = 0; j < nNodes; ++j) {
                     K_global[nodeIdx][j] = 0.0;
-                    if (j < K_global.size()) {
-                        K_global[j][nodeIdx] = 0.0; // Also set column to zero
-                    }
+                    K_global[j][nodeIdx] = 0.0;
                 }
+                // Set diagonal to 1 and RHS to the Dirichlet value
                 K_global[nodeIdx][nodeIdx] = 1.0;
-
-                // Set right-hand side
-                F_global[nodeIdx] = g_val;
+                F_global[nodeIdx] = dirichletValues[nodeIdx];
             }
         } else if (bcData.type == "neumann") {
-            // For Neumann boundary conditions, add to the right-hand side
             for (int nodeIdx : boundaryNodes) {
-                double x = mesh.nodes[nodeIdx].first;
-                double y = mesh.nodes[nodeIdx].second;
-                double h_val = bcData.value_func ? bcData.value_func(x, y) : bcData.value;
-
-                // Add contribution to the right-hand side
-                F_global[nodeIdx] += h_val;
+                // Skip modifying Neumann nodes if they are also Dirichlet nodes (Dirichlet takes precedence)
+                if (!isDirichletNode[nodeIdx]) {
+                    double x = mesh.nodes[nodeIdx].first;
+                    double y = mesh.nodes[nodeIdx].second;
+                    double h_val = bcData.value_func ? bcData.value_func(x, y) : bcData.value;
+                    F_global[nodeIdx] += h_val;
+                }
             }
         }
     }
@@ -184,28 +209,37 @@ std::vector<std::vector<double>> EllipticFEMSolver::localConvectionMatrix(const 
     double b1_val = b1_func_(x_c, y_c);
     double b2_val = b2_func_(x_c, y_c);
     
-    // Gradients of shape functions
-    double detJ = 2.0 * area;
-    double b1 = y2 - y3;
-    double c1 = x3 - x2;
-    double b2 = y3 - y1;
-    double c2 = x1 - x3;
-    double b3 = y1 - y2;
-    double c3 = x2 - x1;
-    
     std::vector<std::vector<double>> Ce(3, std::vector<double>(3, 0.0));
     
+    if (std::abs(b1_val) < 1e-9 && std::abs(b2_val) < 1e-9) {
+        return Ce; // Return zero matrix if convection is negligible
+    }
+
+    // Gradients of shape functions (dN/dx, dN/dy)
+    double detJ = 2.0 * area;
+    double dN_dx[3], dN_dy[3];
+    
+    // dN1/dx, dN1/dy
+    dN_dx[0] = (y2 - y3) / detJ;
+    dN_dy[0] = (x3 - x2) / detJ;
+    
+    // dN2/dx, dN2/dy
+    dN_dx[1] = (y3 - y1) / detJ;
+    dN_dy[1] = (x1 - x3) / detJ;
+    
+    // dN3/dx, dN3/dy
+    dN_dx[2] = (y1 - y2) / detJ;
+    dN_dy[2] = (x2 - x1) / detJ;
+
+    // Integral of Ni * (b . grad(Nj)) dV
+    // For linear triangular elements, this is approximated as:
+    // (Area / 3) * (b1 * dNj/dx + b2 * dNj/dy)
+    // where the integral of Ni is Area/3 and the rest of the integrand is constant
+    
     for (int i = 0; i < 3; ++i) {
-        double dN_dx_i = (i == 0) ? b1 : (i == 1) ? b2 : b3;
-        double dN_dy_i = (i == 0) ? c1 : (i == 1) ? c2 : c3;
-        dN_dx_i /= detJ;
-        dN_dy_i /= detJ;
-        
         for (int j = 0; j < 3; ++j) {
-            // Convection matrix: integral of (b1*dN_i/dx + b2*dN_i/dy) * N_j * area
-            // For linear elements: N_j integrated over element = area/3 at each node
-            double N_j_avg = 1.0/3.0; // Average value of N_j over the element
-            Ce[i][j] = (b1_val * dN_dx_i + b2_val * dN_dy_i) * N_j_avg * area / 6.0;
+            double b_dot_grad_Nj = b1_val * dN_dx[j] + b2_val * dN_dy[j];
+            Ce[i][j] = (area / 3.0) * b_dot_grad_Nj;
         }
     }
     

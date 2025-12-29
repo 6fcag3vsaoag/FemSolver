@@ -34,6 +34,17 @@ set(SOURCES
     "src/EllipticApp.cpp"
     "src/GUIApp.cpp"
     "src/ReportGenerator.cpp"
+    "src/GdiVisualizer.cpp"
+    "src/Localization.cpp"
+    "src/PresetManager.cpp"
+    "src/WindowEventHandler.cpp"
+    "src/VisualizationManager.cpp"
+    "src/SolutionManager.cpp"
+    "src/ExportManager.cpp"
+    "src/ResetManager.cpp"
+    "src/rendering/DirectXRenderer.cpp"
+    "src/rendering/DirectXVisualizer.cpp"
+    "src/VisualizationFactory.cpp"
 )
 
 # Список заголовочных файлов
@@ -47,6 +58,20 @@ set(HEADERS
     "include/EllipticApp.h"
     "include/GUIApp.h"
     "include/ReportGenerator.h"
+    "include/IVisualizer.h"
+    "include/GdiVisualizer.h"
+    "include/StringUtils.h"
+    "include/Localization.h"
+    "include/PresetManager.h"
+    "include/GUIAppTypes.h"
+    "include/WindowEventHandler.h"
+    "include/VisualizationManager.h"
+    "include/SolutionManager.h"
+    "include/ExportManager.h"
+    "include/ResetManager.h"
+    "include/VisualizationFactory.h"
+    "include/rendering/DirectXRenderer.h"
+    "include/rendering/DirectXVisualizer.h"
 )
 
 # Добавьте все исходники в исполняемый файл проекта
@@ -70,7 +95,10 @@ endif()
 
 # Link Windows libraries
 if (WIN32)
-  target_link_libraries(FemSolver comctl32)
+  target_link_libraries(FemSolver comctl32 d3d11 d3dcompiler dxgi)
 endif()
+
+# Add preprocessor definitions
+add_definitions(-DUNICODE -D_UNICODE)
 
 # TODO: Добавьте тесты и целевые объекты, если это необходимо.
